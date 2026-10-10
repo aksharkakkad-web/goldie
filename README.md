@@ -1,3 +1,29 @@
+# Goldie
+
+HackNC engineering mentor built on Eclipse Theia IDE. This initial branch contains the desktop IDE setup and branding; the mentor panel and Gemini/ElevenLabs backend are not implemented yet.
+
+## Start development
+
+Use Node 24.21.0 and Yarn Classic 1.22.22. From the repository root:
+
+```sh
+nvm install
+nvm use
+npm install --global yarn@1.22.22
+yarn --frozen-lockfile
+yarn build:dev
+yarn download:plugins
+```
+
+Then run `yarn electron watch` in one terminal and `yarn electron start .` in another. Reload the IDE window after the watcher finishes rebuilding.
+
+- [Development setup and troubleshooting](DEV_SETUP.md)
+- [Updated Goldie PRD and responsibilities](docs/Goldie_HackNC_PRD.md)
+
+The original Theia README, license, notices, and Git history are retained below.
+
+---
+
 <br/>
 <div id="theia-logo" align="center">
     <br />
