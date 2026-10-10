@@ -27,6 +27,7 @@ for (const [name, status, body] of [
     ['malformed', 200, '<html>error</html>'],
     ['null', 200, 'null'],
     ['wrong type', 200, '{"ok":"true"}'],
+    ['unexpected fields', 200, '{"ok":true,"unexpected":true}'],
     ['oversized', 200, ' '.repeat(5000)],
     ['server error', 500, '{"ok":true}'],
     ['redirect', 302, '{"ok":true}']

@@ -36,6 +36,7 @@
     "yargs": "^17.7.3"
   },
   "scripts": {
+    "test:stage0": "yarn backend:test && yarn workspace @goldie/contracts test && yarn workspace theia-ide-product-ext test && node --test scripts/test-goldie-stage0.cjs",
     "backend:build": "yarn workspace @goldie/backend build",
     "backend:test": "yarn workspace @goldie/backend test",
     "backend:start": "yarn workspace @goldie/backend start",

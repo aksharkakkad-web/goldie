@@ -8,6 +8,7 @@
  ********************************************************************************/
 
 import * as http from 'http';
+import { HealthResponseSchema } from '@goldie/contracts';
 import { GoldieHealth } from '../common/goldie-service';
 
 /** Bounded, local-only health check. Never accepts a URL from the renderer. */
@@ -52,7 +53,7 @@ export async function checkGoldieHealth(address: string, timeoutMs = 5000): Prom
             response.on('end', () => {
                 try {
                     const payload: unknown = JSON.parse(body);
-                    if (typeof payload === 'object' && !!payload && 'ok' in payload && payload.ok === true) {
+                    if (HealthResponseSchema.safeParse(payload).success) {
                         finish({ connected: true, message: 'The teaching service is reachable. Lessons and voice come next.' });
                         return;
                     }

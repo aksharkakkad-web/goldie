@@ -69,10 +69,15 @@ Keep the backend running in its own terminal alongside `yarn electron watch` and
 local route with `curl http://127.0.0.1:8787/health` and validate the provider key with
 `yarn backend:smoke:elevenlabs`.
 
-The backend accepts the local Theia origin configured by `GOLDIE_ALLOWED_ORIGIN`. If the
-desktop renderer uses a different development origin, set that variable in `backend/.env`
-and restart the backend. Never place ElevenLabs or other provider keys in Theia preferences,
-frontend code or renderer storage.
+The Goldie panel calls the teaching backend through Theia's local RPC service, so the
+Electron renderer's file origin needs no CORS override. `GOLDIE_ALLOWED_ORIGIN` controls
+CORS for direct HTTP browser clients. `GOLDIE_BACKEND_URL` overrides the IDE transport's
+default `http://127.0.0.1:8787` and must be set before starting the IDE. Never place provider
+keys in Theia preferences, frontend code or renderer storage.
+
+Run `yarn test:stage0` for all Stage 0 regression checks. In the desktop, verify Connected,
+stop the backend and check Unavailable, then restart the backend and retry to recover.
+The panel can be closed and reopened through **Goldie: Open Panel** in the command palette.
 
 ## Persistent terminals
 
@@ -152,4 +157,6 @@ while plugins initialize. It is explicit reload, not automatic hot reload.
 Upstream deprecation and unsupported plugin-activation warnings remain, without blocking the verified flows.
 
 The reviewed product specification is saved at `docs/Goldie_HackNC_PRD.md`.
-This setup does not implement the mentor panel, Gemini, voice, onboarding or handoff integration yet.
+Stage 0 implements the Goldie connection panel, teaching backend, shared API contracts,
+and real ElevenLabs credential validation. Gemini, spoken lessons, onboarding and handoff
+integration remain later-stage work.

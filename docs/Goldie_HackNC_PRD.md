@@ -257,7 +257,7 @@ Keep the reference content in one place (e.g. `backend/reference/lesson.json`) a
 
 **Stage gates are cumulative**: finishing Stage 2 must not break the Stage 1 complete voice experience; connecting live Codex must not break Gemini teaching or audio. Prepared content is acceptable for *internal development gates*, not as evidence of adaptive intelligence in judging.
 
-- [ ] **Stage 0:** IDE panel talks to backend; ElevenLabs credentials pass a genuine connectivity test.
+- [x] **Stage 0:** IDE panel talks to backend; ElevenLabs credentials pass a genuine connectivity test. Verified October 10, 2026; see `docs/goldie-panel.md` for the repeatable workflow.
 - [ ] **Stage 1:** Prepared opt-in → roadmap → lesson → skip/already-know → typed prepared question → recap works, with **real ElevenLabs speech** at the lesson and answer steps.
 - [ ] **Stage 2:** With the same UI, Gemini (not a prepared file) chooses phases and generates spoken teaching; changes to handoff/profile change the output appropriately.
 - [ ] **Stage 3:** An unseen typed question receives a real context-aware Gemini answer. Push-to-talk + transcription is added if reliable.

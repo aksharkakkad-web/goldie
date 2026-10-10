@@ -1,6 +1,6 @@
 # Goldie
 
-HackNC engineering mentor built on Eclipse Theia IDE. This initial branch contains the desktop IDE setup and branding; the mentor panel and Gemini/ElevenLabs backend are not implemented yet.
+HackNC engineering mentor built on Eclipse Theia IDE. Stage 0 connects the desktop Goldie panel to the local teaching backend and validates real ElevenLabs credentials. Lessons, speech generation, Gemini, and Codex handoffs come in later stages.
 
 ## Start development
 
@@ -29,6 +29,11 @@ yarn backend:start
 
 The local service listens at `http://127.0.0.1:8787` by default. Verify it with
 `curl http://127.0.0.1:8787/health`, then run `yarn backend:smoke:elevenlabs`.
+
+Start the desktop with `yarn electron start .`; the Goldie panel opens on the right
+and shows **Connected** when the backend is running. Run `yarn test:stage0` for the
+backend, shared contracts, panel transport, and real client/server regression checks.
+See [panel setup and the Stage 0 verification workflow](docs/goldie-panel.md).
 
 - [Development setup and troubleshooting](DEV_SETUP.md)
 - [Updated Goldie PRD and responsibilities](docs/Goldie_HackNC_PRD.md)

@@ -13,7 +13,7 @@ import { GOLDIE_SERVICE_PATH, GoldieService } from '../common/goldie-service';
 import { checkGoldieHealth } from './goldie-health';
 
 export default new ContainerModule(bind => {
-    const address = process.env.GOLDIE_BACKEND_URL || 'http://127.0.0.1:8000';
+    const address = process.env.GOLDIE_BACKEND_URL || 'http://127.0.0.1:8787';
     bind(GoldieService).toConstantValue({ checkHealth: () => checkGoldieHealth(address) });
     bind(ConnectionHandler).toDynamicValue(context =>
         new RpcConnectionHandler<GoldieService>(GOLDIE_SERVICE_PATH, () => context.container.get(GoldieService))
