@@ -1,6 +1,6 @@
 # Goldie
 
-HackNC engineering mentor built on Eclipse Theia IDE. Stage 0 connects the desktop Goldie panel to the local teaching backend and validates real ElevenLabs credentials. Lessons, speech generation, Gemini, and Codex handoffs come in later stages.
+HackNC engineering mentor built on Eclipse Theia IDE. The integrated Stage 1 experience teaches prepared web-app architecture through a roadmap, real ElevenLabs speech, pause/resume, typed questions, saved progress and truthful recaps. It runs in native Theia Electron, not Cursor or VS Code. Gemini-generated teaching and live Codex handoffs come later.
 
 ## Start development
 
@@ -34,6 +34,12 @@ Start the desktop with `yarn electron start .`; the Goldie panel opens on the ri
 and shows **Connected** when the backend is running. Run `yarn test:stage0` for the
 backend, shared contracts, panel transport, and real client/server regression checks.
 See [panel setup and the Stage 0 verification workflow](docs/goldie-panel.md).
+
+Run `yarn test:stage1` for cumulative backend/contracts/transport/controller checks. The
+opt-in `yarn backend:smoke:speech --play` generates and plays a real lesson and
+answer using existing credits (or cached audio); stop the normal backend first.
+See [Stage 1 API contracts](docs/stage1-api.md) and the
+[connected desktop workflow and verification evidence](docs/goldie-stage1.md).
 
 - [Development setup and troubleshooting](DEV_SETUP.md)
 - [Updated Goldie PRD and responsibilities](docs/Goldie_HackNC_PRD.md)

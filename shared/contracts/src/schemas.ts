@@ -9,8 +9,9 @@
 
 import { z } from 'zod';
 
-const IdentifierSchema = z.string().trim().min(1);
+export const IdentifierSchema = z.string().trim().min(1).max(128);
 const RevisionSchema = z.number().int().nonnegative();
+const HandoffSchema = z.string().max(32000).default('');
 
 export const KnowledgeProfileSchema = z.record(z.string(), z.unknown());
 
@@ -37,55 +38,85 @@ export const HealthResponseSchema = z.object({
 export const OfferRequestSchema = z.object({
     projectId: IdentifierSchema,
     revision: RevisionSchema,
-    handoff: z.string(),
-    profile: KnowledgeProfileSchema
+    handoff: HandoffSchema,
+    profile: KnowledgeProfileSchema.default({}),
+    referenceLessonId: z.literal('webapp-architecture').optional()
 }).strict();
 
 export const OfferResponseSchema = z.object({
     shouldOffer: z.boolean(),
     previewTopics: z.array(z.string().trim().min(1)),
-    offerId: IdentifierSchema.optional()
+    offerId: IdentifierSchema.optional(),
+    estimatedSeconds: z.number().int().positive().optional()
 }).strict();
 
 export const SessionRequestSchema = z.object({
     offerId: IdentifierSchema,
     revision: RevisionSchema,
-    handoff: z.string(),
-    profile: KnowledgeProfileSchema
+    handoff: HandoffSchema,
+    profile: KnowledgeProfileSchema.default({})
 }).strict();
 
-export const SessionResponseSchema = z.object({
+export const SessionStateSchema = z.object({
     sessionId: IdentifierSchema,
+    projectId: IdentifierSchema,
     snapshotRevision: RevisionSchema,
-    phases: z.array(PhaseSchema)
+    phases: z.array(PhaseSchema),
+    status: z.enum(['learning', 'paused', 'asking', 'completed', 'dismissed']),
+    activePhaseId: IdentifierSchema.optional(),
+    completedIds: z.array(IdentifierSchema),
+    skippedIds: z.array(IdentifierSchema),
+    alreadyKnowIds: z.array(IdentifierSchema),
+    lastEvaluatedRevision: RevisionSchema,
+    questionHistory: z.array(z.object({
+        question: z.string().min(1).max(1000),
+        answer: z.string().min(1).max(4000),
+        resumePhaseId: IdentifierSchema
+    }).strict())
 }).strict();
+
+export const SessionResponseSchema = SessionStateSchema;
+
+const ActionBaseSchema = z.object({ actionId: IdentifierSchema });
+export const SessionActionRequestSchema = z.discriminatedUnion('action', [
+    ActionBaseSchema.extend({ action: z.literal('pause') }).strict(),
+    ActionBaseSchema.extend({ action: z.literal('resume') }).strict(),
+    ActionBaseSchema.extend({ action: z.literal('phase_completed'), phaseId: IdentifierSchema }).strict(),
+    ActionBaseSchema.extend({ action: z.literal('skip'), phaseId: IdentifierSchema }).strict(),
+    ActionBaseSchema.extend({ action: z.literal('already_know'), phaseId: IdentifierSchema }).strict()
+]);
+export const SessionActionResponseSchema = SessionStateSchema;
 
 export const TeachRequestSchema = z.object({
     sessionId: IdentifierSchema,
     phaseId: IdentifierSchema,
-    handoff: z.string(),
-    profile: KnowledgeProfileSchema
+    handoff: HandoffSchema,
+    profile: KnowledgeProfileSchema.default({}),
+    detail: z.enum(['standard', 'expanded']).default('standard')
 }).strict();
 
 export const TeachResponseSchema = z.object({
-    explanation: z.string(),
+    explanation: z.string().min(1).max(4000),
     groundingStatus: z.enum(['conceptual', 'inferred', 'observed']),
+    contentId: IdentifierSchema,
     audioUrl: z.url().optional()
 }).strict();
 
 export const AskRequestSchema = z.object({
     sessionId: IdentifierSchema,
     phaseId: IdentifierSchema,
-    question: z.string().trim().min(1),
-    handoff: z.string(),
-    sources: z.array(SourceExcerptSchema).optional()
+    question: z.string().trim().min(1).max(1000),
+    handoff: HandoffSchema,
+    sources: z.array(SourceExcerptSchema).max(8).optional()
 }).strict();
 
 export const AskResponseSchema = z.discriminatedUnion('kind', [
     z.object({
         kind: z.literal('answer'),
-        answer: z.string(),
-        resumePhaseId: IdentifierSchema
+        answer: z.string().min(1).max(4000),
+        resumePhaseId: IdentifierSchema,
+        contentId: IdentifierSchema,
+        supportedQuestions: z.array(z.string().min(1).max(1000)).optional()
     }).strict(),
     z.object({
         kind: z.literal('needs_sources'),
@@ -98,8 +129,8 @@ export const CompleteRequestSchema = z.object({
     sessionId: IdentifierSchema,
     status: z.enum(['completed', 'dismissed']),
     currentRevision: RevisionSchema,
-    handoff: z.string(),
-    learningState: z.record(z.string(), z.unknown())
+    handoff: HandoffSchema,
+    learningState: z.record(z.string(), z.unknown()).default({})
 }).strict();
 
 export const CompleteResponseSchema = z.object({
@@ -109,7 +140,19 @@ export const CompleteResponseSchema = z.object({
 }).strict();
 
 export const SpeechRequestSchema = z.object({
-    text: z.string().trim().min(1)
+    sessionId: IdentifierSchema,
+    contentId: IdentifierSchema
+}).strict();
+
+export const AudioIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
+export const SpeechResponseSchema = z.object({
+    audioId: AudioIdSchema,
+    audioUrl: z.string().regex(/^\/api\/audio\/[a-f0-9]{64}$/),
+    mimeType: z.literal('audio/mpeg')
+}).strict();
+
+export const ApiErrorResponseSchema = z.object({
+    error: z.object({ code: z.string().min(1), message: z.string().min(1), retryable: z.boolean() }).strict()
 }).strict();
 
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
@@ -117,6 +160,10 @@ export type OfferRequest = z.infer<typeof OfferRequestSchema>;
 export type OfferResponse = z.infer<typeof OfferResponseSchema>;
 export type SessionRequest = z.infer<typeof SessionRequestSchema>;
 export type SessionResponse = z.infer<typeof SessionResponseSchema>;
+export type SessionState = z.infer<typeof SessionStateSchema>;
+export type Phase = z.infer<typeof PhaseSchema>;
+export type SessionActionRequest = z.infer<typeof SessionActionRequestSchema>;
+export type SessionActionResponse = z.infer<typeof SessionActionResponseSchema>;
 export type TeachRequest = z.infer<typeof TeachRequestSchema>;
 export type TeachResponse = z.infer<typeof TeachResponseSchema>;
 export type AskRequest = z.infer<typeof AskRequestSchema>;
@@ -124,3 +171,5 @@ export type AskResponse = z.infer<typeof AskResponseSchema>;
 export type CompleteRequest = z.infer<typeof CompleteRequestSchema>;
 export type CompleteResponse = z.infer<typeof CompleteResponseSchema>;
 export type SpeechRequest = z.infer<typeof SpeechRequestSchema>;
+export type SpeechResponse = z.infer<typeof SpeechResponseSchema>;
+export type ApiErrorResponse = z.infer<typeof ApiErrorResponseSchema>;

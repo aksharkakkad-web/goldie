@@ -3,8 +3,9 @@ import type { GoldieSpeech } from '../../common/goldie-service';
 
 export type GoldieAudioState = 'idle' | 'playing' | 'paused' | 'ended' | 'error';
 export type GoldieAudioTrack = 'lesson' | 'answer';
+export interface GoldieAudioProgress { position: number; duration: number; }
 export interface GoldieAudioAdapter {
-    subscribe(listener: (state: GoldieAudioState, track: GoldieAudioTrack) => void): () => void;
+    subscribe(listener: (state: GoldieAudioState, track: GoldieAudioTrack, progress?: GoldieAudioProgress) => void): () => void;
     load(track: GoldieAudioTrack, speech: GoldieSpeech): void;
     select(track: GoldieAudioTrack): void;
     play(): Promise<void>;
@@ -16,10 +17,10 @@ export interface GoldieAudioAdapter {
 /** Retain the lesson element while an answer plays, including its playback position. */
 export class GoldieAudioPlayer implements GoldieAudioAdapter {
     private readonly tracks = new Map<GoldieAudioTrack, { audio: HTMLAudioElement; url: string }>();
-    private readonly listeners = new Set<(state: GoldieAudioState, track: GoldieAudioTrack) => void>();
+    private readonly listeners = new Set<(state: GoldieAudioState, track: GoldieAudioTrack, progress?: GoldieAudioProgress) => void>();
     private active: GoldieAudioTrack = 'lesson';
 
-    subscribe(listener: (state: GoldieAudioState, track: GoldieAudioTrack) => void): () => void {
+    subscribe(listener: (state: GoldieAudioState, track: GoldieAudioTrack, progress?: GoldieAudioProgress) => void): () => void {
         this.listeners.add(listener);
         return () => this.listeners.delete(listener);
     }
@@ -35,13 +36,20 @@ export class GoldieAudioPlayer implements GoldieAudioAdapter {
         const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
         const audio = new Audio(url);
         this.tracks.set(track, { audio, url });
+        let currentState: GoldieAudioState = 'paused';
+        const notify = (): void => {
+            if (this.tracks.get(track)?.audio !== audio || this.active !== track) { return; }
+            const progress = { position: Number.isFinite(audio.currentTime) ? audio.currentTime : 0, duration: Number.isFinite(audio.duration) ? audio.duration : 0 };
+            for (const listener of this.listeners) { listener(currentState, track, progress); }
+        };
         for (const [event, state] of [['play', 'playing'], ['pause', 'paused'], ['ended', 'ended'], ['error', 'error']] as const) {
             audio.addEventListener(event, () => {
-                if (this.tracks.get(track)?.audio === audio && this.active === track) {
-                    for (const listener of this.listeners) { listener(state, track); }
-                }
+                currentState = state;
+                notify();
             });
         }
+        audio.addEventListener('timeupdate', notify);
+        audio.addEventListener('loadedmetadata', notify);
         this.select(track);
     }
     select(track: GoldieAudioTrack): void {

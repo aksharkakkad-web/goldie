@@ -26,4 +26,19 @@ describe('backend configuration', () => {
     it('normalizes a whitespace-only provider key to missing', () => {
         expect(loadConfig({ ELEVENLABS_API_KEY: '   ' }).elevenLabsApiKey).to.equal(undefined);
     });
+
+    it('defaults speech to George, a bounded timeout and a local data directory', () => {
+        const config = loadConfig({});
+        expect(config.elevenLabsVoiceId).to.equal('JBFqnCBsd6RMkjVDRZzb');
+        expect(config.elevenLabsModelId).to.equal('eleven_multilingual_v2');
+        expect(config.speechTimeoutMs).to.equal(20000);
+        expect(config.dataDir).to.match(/backend\/\.data$/);
+    });
+
+    it('validates configurable speech timeouts and voice identifiers', () => {
+        expect(() => loadConfig({ GOLDIE_SPEECH_TIMEOUT_MS: '999999' })).to.throw();
+        expect(() => loadConfig({ ELEVENLABS_VOICE_ID: '../bad' })).to.throw();
+        expect(loadConfig({ ELEVENLABS_VOICE_ID: 'customVoice123', GOLDIE_SPEECH_TIMEOUT_MS: '15000' }))
+            .to.deep.include({ elevenLabsVoiceId: 'customVoice123', speechTimeoutMs: 15000 });
+    });
 });

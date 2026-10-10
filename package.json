@@ -41,6 +41,8 @@
     "backend:test": "yarn workspace @goldie/backend test",
     "backend:start": "yarn workspace @goldie/backend start",
     "backend:smoke:elevenlabs": "yarn workspace @goldie/backend smoke:elevenlabs",
+    "backend:smoke:speech": "yarn workspace @goldie/backend smoke:speech",
+    "test:stage1": "yarn test:stage0",
     "clean": "lerna run clean && rimraf node_modules",
     "build": "yarn build:extensions && yarn build:applications",
     "build:dev": "yarn build:extensions && yarn build:applications:dev",

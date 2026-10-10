@@ -3,14 +3,16 @@
 ## Toolchain on this Mac
 
 Apple Silicon, Node 24.21.0, Yarn Classic 1.22.22, Xcode and Python 3.
-Node and Yarn were installed separately for this project. In each new terminal:
+From your own checkout, use the repository's pinned Node version:
 
 ```sh
-export PATH="$HOME/.local/share/buildsense/node-v24.21.0-darwin-arm64/bin:$HOME/.local/share/buildsense/tools/bin:$PATH"
-cd /Users/rishits/Documents/ChatGPT/hacknc/buildsense
+nvm use
+node --version
+yarn --version
 ```
 
-`.nvmrc` also pins Node for developers who use nvm. Keep the upstream lockfile.
+Developers without nvm can put their existing Node 24.21.0/Yarn 1.22.22 installation
+on PATH. Keep the upstream lockfile; do not reinstall for routine source changes.
 
 ## First build
 
@@ -37,7 +39,7 @@ The Electron tsconfig references the product, launcher and updater extensions.
 In another terminal:
 
 ```sh
-yarn electron start /Users/rishits/Documents/ChatGPT/hacknc/buildsense
+yarn electron start .
 ```
 
 Keep the app process running while editing source. After the watcher finishes without errors,
@@ -79,6 +81,25 @@ Run `yarn test:stage0` for all Stage 0 regression checks. In the desktop, verify
 stop the backend and check Unavailable, then restart the backend and retry to recover.
 The panel can be closed and reopened through **Goldie: Open Panel** in the command palette.
 
+## Connected Stage 1 lesson
+
+Build with `yarn backend:build`, `yarn workspace theia-ide-product-ext build`,
+and `yarn electron build`, then run the backend and native Electron application as
+above. Use Prepare lesson → Explain this build in the Goldie panel. The reference
+lesson covers frontend, backend/API and database through creating a team; it does
+not inspect workspace files or generate an application.
+
+Pause/play, Explain more, typed prepared questions, skip, self-reported familiarity,
+and End session use saved server progress. Closing/reopening or restarting restores
+the accepted lesson without starting audio. Clip position survives question/add-on
+interruptions while the panel is open; it is not saved across closing the panel.
+Speech errors leave text and read/skip/end controls usable. Credentials stay in
+ignored `backend/.env`. Use only one backend process per JSON data directory.
+
+Run `yarn test:stage1` and `yarn lint` before handoff. These do not spend credits.
+Native playback and failure evidence, diagnostic fixture limits, and the separate
+packaged-Electron test prerequisite are in [the Stage 1 guide](docs/goldie-stage1.md).
+
 ## Persistent terminals
 
 A tmux session named `goldie` keeps development processes independent of this chat.
@@ -112,7 +133,7 @@ see `docs/developing-with-local-theia.md` if we actually need that later.
 
 ## Troubleshooting
 
-- Wrong Node/Yarn: run the PATH export above, then `node -v` and `yarn -v`. Node 22 does not meet this checkout's requirements.
+- Wrong Node/Yarn: use the pinned toolchain above, then `node -v` and `yarn -v`. Node 22 does not meet this checkout's requirements.
 - Native module errors after switching runtimes: stop the app and run `yarn electron rebuild`, then `yarn electron build`.
 - TypeScript errors: read the watch terminal and fix the source error before reloading.
 - Source changes absent: confirm TypeScript compilation and bundling both finished; reload the Electron window.
@@ -158,5 +179,8 @@ Upstream deprecation and unsupported plugin-activation warnings remain, without 
 
 The reviewed product specification is saved at `docs/Goldie_HackNC_PRD.md`.
 Stage 0 implements the Goldie connection panel, teaching backend, shared API contracts,
-and real ElevenLabs credential validation. Gemini, spoken lessons, onboarding and handoff
-integration remain later-stage work.
+and real ElevenLabs credential validation. The integrated Stage 1 desktop adds prepared
+web-app architecture lessons, local persistent session/progress state, Q&A, recap and
+real ElevenLabs playback/cache. Gemini, onboarding and live handoffs remain future work.
+See `docs/stage1-api.md` for exact contracts and `docs/goldie-stage1.md` for the native
+workflow and verified integration status. Shared-main delivery still requires approval.

@@ -1,188 +1,319 @@
 // Copyright (C) 2026 Goldie contributors. SPDX-License-Identifier: MIT
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const schemas = require('@goldie/contracts');
 const { GoldieLessonController } = require('../lib/browser/goldie/goldie-lesson-controller');
+const { GoldieAudioPlayer } = require('../lib/browser/goldie/goldie-audio-player');
 
-class FakeAudio {
-    tracks = {};
-    track = 'lesson';
-    plays = 0;
-    loads = 0;
-    disposed = false;
-    subscribe(listener) { this.listener = listener; return () => { this.listener = undefined; }; }
-    load(track) { this.loads++; this.tracks[track] = { position: 0 }; this.select(track); }
-    select(track) { this.pause(); this.track = track; }
-    async play() { assert.ok(this.tracks[this.track]); this.plays++; this.emit('playing'); }
-    pause() { this.emit('paused'); }
-    clear() { this.tracks = {}; }
-    dispose() { this.disposed = true; this.clear(); }
-    emit(state) { this.listener?.(state, this.track); }
+// Replace only the browser media device and external service; player/controller are real.
+class MediaElement {
+    static instances = [];
+    currentTime = 0; ended = false; listeners = {}; plays = 0;
+    constructor(url) { this.url = url; MediaElement.instances.push(this); }
+    addEventListener(event, listener) { (this.listeners[event] ??= []).push(listener); }
+    emit(event) { if (event === 'ended') { this.ended = true; } for (const listener of this.listeners[event] ?? []) { listener(); } }
+    async play() { this.plays++; this.emit('play'); }
+    pause() { this.emit('pause'); }
+    removeAttribute() {}
+    load() {}
 }
-function setup(count = 3) {
-    const audio = new FakeAudio();
-    const calls = { speech: [], complete: [], teach: [] };
-    const phases = Array.from({ length: count }, (_, i) => ({ id: `p${i}`, title: `Phase ${i}`, objective: 'Learn', description: 'Description' }));
+global.Audio = MediaElement;
+const clone = value => structuredClone(value);
+const speech = { mimeType: 'audio/mpeg', dataBase64: 'YQ==' };
+const tick = () => new Promise(resolve => setImmediate(resolve));
+async function settled(controller) { for (let i = 0; i < 30 && controller.state.busy; i++) { await tick(); } }
+function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
+function memory() {
+    const values = new Map();
+    return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+}
+function setup(count = 3, storage = memory()) {
+    const phases = Array.from({ length: count }, (_, index) => ({ id: `p${index}`, title: `Phase ${index}`, objective: 'Understand architecture', description: 'A conceptual explanation.' }));
+    let session = { sessionId: 's1', projectId: 'goldie-reference', snapshotRevision: 1, phases, status: 'learning',
+        ...(count ? { activePhaseId: 'p0' } : {}), completedIds: [], skippedIds: [], alreadyKnowIds: [], lastEvaluatedRevision: 0, questionHistory: [] };
+    const calls = { offer: [], start: [], teach: [], ask: [], action: [], speech: [], complete: [], get: [] };
+    const applied = new Map();
     const service = {
-        async offer() { return { shouldOffer: true, offerId: 'o1', previewTopics: ['Authentication'] }; },
-        async startSession() { return { sessionId: 's1', snapshotRevision: 1, phases }; },
-        async teach(request) { calls.teach.push(request); return { explanation: `Explain ${request.phaseId}`, groundingStatus: 'conceptual' }; },
-        async ask(request) { return { kind: 'answer', answer: `Answer ${request.question}`, resumePhaseId: request.phaseId }; },
-        async speech(request) { calls.speech.push(request); return { mimeType: 'audio/mpeg', dataBase64: 'YQ==' }; },
-        async complete(request) { calls.complete.push(request); return { recap: 'Your recap', lastEvaluatedRevision: 1 }; }
+        async offer(request) { schemas.OfferRequestSchema.parse(request); calls.offer.push(clone(request)); return { shouldOffer: true, offerId: 'o1', previewTopics: ['Frontend', 'API', 'Database'], estimatedSeconds: 165 }; },
+        async startSession(request) { schemas.SessionRequestSchema.parse(request); calls.start.push(clone(request)); return clone(session); },
+        async getSession(id) { assert.equal(id, 's1'); calls.get.push(id); return clone(session); },
+        async teach(request) { schemas.TeachRequestSchema.parse(request); calls.teach.push(clone(request)); return { explanation: `${request.detail === 'expanded' ? 'More' : 'Explain'} ${request.phaseId}`, groundingStatus: 'conceptual', contentId: `${request.phaseId}-${request.detail}` }; },
+        async ask(request) {
+            schemas.AskRequestSchema.parse(request); calls.ask.push(clone(request)); session.status = 'asking';
+            const answer = { kind: 'answer', answer: `Answer ${request.question}`, resumePhaseId: request.phaseId, contentId: 'answer-1', supportedQuestions: ['What is an API?'] };
+            session.questionHistory.push({ question: request.question, answer: answer.answer, resumePhaseId: request.phaseId }); return answer;
+        },
+        async action(id, request) {
+            assert.equal(id, 's1'); schemas.SessionActionRequestSchema.parse(request); calls.action.push(clone(request));
+            if (applied.has(request.actionId)) { assert.deepEqual(request, applied.get(request.actionId)); return clone(session); }
+            applied.set(request.actionId, clone(request));
+            if (request.action === 'pause') { session.status = 'paused'; }
+            else if (request.action === 'resume') { session.status = 'learning'; }
+            else {
+                assert.equal(request.phaseId, session.activePhaseId);
+                if (request.action === 'phase_completed') { assert.equal(session.status, 'learning'); session.completedIds.push(request.phaseId); }
+                if (request.action === 'skip') { session.skippedIds.push(request.phaseId); }
+                if (request.action === 'already_know') { session.alreadyKnowIds.push(request.phaseId); }
+                session.activePhaseId = phases[phases.findIndex(phase => phase.id === request.phaseId) + 1]?.id;
+            }
+            return clone(session);
+        },
+        async speech(request) { schemas.SpeechRequestSchema.parse(request); calls.speech.push(clone(request)); return speech; },
+        async complete(request) { schemas.CompleteRequestSchema.parse(request); calls.complete.push(clone(request)); session.status = request.status; session.lastEvaluatedRevision = 1; return { recap: 'Server recap: completed, skipped and self-reported familiarity.', lastEvaluatedRevision: 1 }; }
     };
-    const controller = new GoldieLessonController(service, audio);
-    return { controller, audio, service, calls };
+    const audio = new GoldieAudioPlayer();
+    const controller = new GoldieLessonController(service, audio, storage);
+    return { controller, audio, service, calls, storage, session: () => session, setSession: value => { session = schemas.SessionResponseSchema.parse(value); } };
 }
 async function start(controller) { await controller.checkOffer(); await controller.acceptOffer(); }
+function clip() { return MediaElement.instances.at(-1); }
 
-test('decline never starts a session or audio', async () => {
-    const { controller, audio, calls } = setup();
-    await controller.checkOffer();
-    controller.declineOffer();
-    assert.equal(controller.state.view, 'idle');
-    assert.equal(controller.state.session, undefined);
-    assert.equal(audio.plays, 0);
-    assert.deepEqual(calls.speech, []);
+test('explicit selector offers without speech and decline never accepts', async () => {
+    const { controller, calls } = setup(); await controller.checkOffer();
+    assert.equal(calls.offer[0].referenceLessonId, 'webapp-architecture'); assert.equal(calls.offer[0].revision, 1);
+    controller.declineOffer(); assert.equal(controller.state.view, 'idle'); assert.equal(calls.start.length, 0); assert.equal(calls.speech.length, 0); controller.dispose();
+});
+test('accepted lesson requests standard text then speech by content ID', async () => {
+    const { controller, calls } = setup(); await start(controller);
+    assert.equal(calls.teach[0].detail, 'standard'); assert.deepEqual(calls.speech[0], { sessionId: 's1', contentId: 'p0-standard' });
+    assert.equal(controller.state.statuses.p0, 'pending'); controller.dispose();
+});
+test('natural end auto-advances on server; skip, familiarity and recap remain authoritative', async () => {
+    const { controller, calls } = setup(); await start(controller); clip().emit('ended'); await settled(controller);
+    assert.equal(controller.state.phaseIndex, 1); assert.equal(controller.state.statuses.p0, 'heard');
+    await controller.skipPhase(); await controller.markFamiliar();
+    assert.deepEqual(controller.state.statuses, { p0: 'heard', p1: 'skipped', p2: 'familiar' });
+    assert.deepEqual(calls.action.map(action => action.action), ['phase_completed', 'skip', 'already_know']);
+    assert.equal(controller.state.view, 'recap'); assert.equal(controller.state.session.status, 'completed');
+    assert.equal(controller.state.recap.recap, 'Server recap: completed, skipped and self-reported familiarity.'); controller.dispose();
+});
+test('pause/resume changes server status and retains exact original clip position', async () => {
+    const { controller, calls } = setup(); await start(controller); const original = clip(); original.currentTime = 12.5;
+    await controller.playPause(); assert.equal(controller.state.session.status, 'paused');
+    original.emit('ended'); await tick(); assert.equal(controller.state.phaseIndex, 0); original.ended = false;
+    await controller.playPause(); assert.equal(controller.state.session.status, 'learning');
+    assert.equal(clip(), original); assert.equal(original.currentTime, 12.5);
+    assert.deepEqual(calls.action.map(action => action.action), ['pause', 'resume']); controller.dispose();
+});
+test('question and expanded add-on preserve lesson clip and explicitly resume server', async () => {
+    const { controller, calls } = setup(); await start(controller); const original = clip(); original.currentTime = 17;
+    await controller.askQuestion('What is an API?'); const answer = clip();
+    assert.equal(controller.state.session.status, 'asking'); assert.notEqual(answer, original);
+    answer.emit('ended'); await tick(); assert.equal(controller.state.phaseIndex, 0);
+    assert.deepEqual(calls.speech[1], { sessionId: 's1', contentId: 'answer-1' });
+    await controller.resumeLesson(); assert.equal(original.currentTime, 17); assert.equal(original.plays, 2);
+    await controller.explainMore(); assert.equal(calls.teach[1].detail, 'expanded'); assert.equal(controller.state.addOn.explanation, 'More p0');
+    assert.equal(controller.state.explanation.explanation, 'Explain p0'); assert.deepEqual(calls.speech[2], { sessionId: 's1', contentId: 'p0-expanded' });
+    await controller.resumeLesson(); assert.equal(original.currentTime, 17); assert.equal(original.plays, 3);
+    assert.equal(calls.teach.filter(call => call.detail === 'standard').length, 1); controller.dispose();
+});
+test('lost action response retries the same ID and blocks different navigation intent', async () => {
+    const { controller, calls, service } = setup(); await start(controller); const action = service.action; let lose = true;
+    service.action = async (...args) => { const response = await action(...args); if (lose) { lose = false; throw new Error('Response lost'); } return response; };
+    await controller.skipPhase(); assert.equal(controller.state.phaseIndex, 0); assert.ok(controller.state.retryable);
+    await controller.markFamiliar(); assert.equal(calls.action.length, 1); await controller.retry();
+    assert.equal(calls.action[0].actionId, calls.action[1].actionId); assert.equal(controller.state.phaseIndex, 1);
+    assert.equal(controller.state.statuses.p0, 'skipped'); assert.equal(controller.state.statuses.p1, 'pending'); controller.dispose();
+});
+test('lost pause response retains ID and retries the question after server pause', async () => {
+    const { controller, calls, service } = setup(); await start(controller); const action = service.action; let lose = true;
+    service.action = async (...args) => { const response = await action(...args); if (lose) { lose = false; throw new Error('Pause response lost'); } return response; };
+    await controller.askQuestion('What is an API?'); assert.equal(calls.ask.length, 0); await controller.retry();
+    assert.equal(calls.action[0].actionId, calls.action[1].actionId); assert.equal(controller.state.answer.contentId, 'answer-1');
+    assert.equal(controller.state.session.status, 'asking'); controller.dispose();
+});
+test('speech failure retains text and manual Play retries content without inventing progress', async () => {
+    const { controller, calls, service } = setup(); const real = service.speech; service.speech = async () => { throw new Error('Voice unavailable'); };
+    await start(controller); assert.equal(controller.state.explanation.explanation, 'Explain p0'); assert.equal(controller.state.error, 'Voice unavailable');
+    assert.equal(controller.state.statuses.p0, 'pending'); service.speech = real; await controller.playPause();
+    assert.equal(controller.state.audioState, 'playing'); assert.equal(calls.teach.length, 1);
+    assert.deepEqual(calls.speech[0], { sessionId: 's1', contentId: 'p0-standard' }); controller.dispose();
+});
+for (const status of ['learning', 'paused', 'asking']) {
+    test(`restore ${status} uses saved active phase and progress without autoplay`, async () => {
+        const fixture = setup(); await start(fixture.controller); fixture.controller.dispose(); const restored = setup(3, fixture.storage);
+        restored.setSession({ ...restored.session(), status, activePhaseId: 'p2', completedIds: ['p0'], skippedIds: ['p1'] });
+        const before = MediaElement.instances.length; await restored.controller.restore();
+        assert.equal(restored.controller.state.phaseIndex, 2); assert.deepEqual(restored.controller.state.statuses, { p0: 'heard', p1: 'skipped', p2: 'pending' });
+        assert.equal(restored.calls.teach.length, 0); assert.equal(restored.calls.speech.length, 0); assert.equal(MediaElement.instances.length, before);
+        await restored.controller.playPause(); assert.equal(restored.controller.state.session.status, 'learning'); assert.equal(restored.controller.state.audioState, 'playing');
+        restored.controller.dispose();
+    });
+}
+test('unavailable restored session stays recoverable without silently creating another', async () => {
+    const fixture = setup(); await start(fixture.controller); fixture.controller.dispose(); const restored = setup(3, fixture.storage); const get = restored.service.getSession;
+    restored.service.getSession = async () => { throw new Error('Saved session unavailable'); };
+    await restored.controller.restore(); await restored.controller.checkOffer();
+    assert.equal(restored.calls.offer.length, 0); assert.equal(restored.calls.start.length, 0); assert.ok(restored.controller.state.error); assert.ok(restored.controller.state.retryable);
+    restored.service.getSession = get; await restored.controller.retry(); assert.equal(restored.controller.state.session.sessionId, 's1'); restored.controller.dispose();
+});
+test('restore final progress or terminal sessions retrieves recap without speech', async () => {
+    for (const status of ['learning', 'completed', 'dismissed']) {
+        const fixture = setup(1); await start(fixture.controller); fixture.controller.dispose(); const restored = setup(1, fixture.storage);
+        restored.setSession({ ...restored.session(), status, activePhaseId: undefined, completedIds: ['p0'] }); await restored.controller.restore();
+        assert.equal(restored.controller.state.view, 'recap'); assert.equal(restored.calls.speech.length, 0);
+        assert.equal(restored.calls.complete[0].status, status === 'dismissed' ? 'dismissed' : 'completed'); restored.controller.dispose();
+    }
+});
+test('late lesson events after skip do not advance or change audio of the new phase', async () => {
+    const { controller, calls } = setup(); await start(controller); const old = clip(); await controller.skipPhase();
+    old.emit('ended'); old.emit('play'); old.emit('error'); await tick();
+    assert.equal(controller.state.phaseIndex, 1); assert.equal(controller.state.audioState, 'playing'); assert.deepEqual(calls.action.map(value => value.action), ['skip']); controller.dispose();
+});
+test('end cancels pending speech and retains server partial recap', async () => {
+    const { controller, service } = setup(); const pendingSpeech = deferred(); service.speech = () => pendingSpeech.promise;
+    await controller.checkOffer(); const pending = controller.acceptOffer(); while (!controller.state.explanation && controller.state.busy) { await tick(); }
+    assert.ok(controller.state.explanation); const before = MediaElement.instances.length; await controller.endSession(); pendingSpeech.resolve(speech); await pending;
+    assert.equal(controller.state.view, 'recap'); assert.equal(controller.state.session.status, 'dismissed'); assert.equal(controller.state.statuses.p0, 'pending');
+    assert.equal(MediaElement.instances.length, before); controller.dispose();
+});
+test('end waits for in-flight question mutation and ignores its late answer', async () => {
+    const { controller, service, calls } = setup(); await start(controller); const pendingAsk = deferred(); const ask = service.ask;
+    service.ask = async request => { await pendingAsk.promise; return ask(request); };
+    const pending = controller.askQuestion('What is an API?'); for (let i = 0; i < 30 && controller.state.session.status !== 'paused' && controller.state.busy; i++) { await tick(); }
+    assert.equal(controller.state.session.status, 'paused'); await tick(); const ending = controller.endSession(); await tick(); assert.equal(calls.complete.length, 0);
+    pendingAsk.resolve(); await pending; await ending; assert.equal(controller.state.session.status, 'dismissed'); assert.equal(controller.state.view, 'recap');
+    assert.equal(calls.speech.length, 1); controller.dispose();
+});
+test('failed final closure preserves completed intent even when End retries it', async () => {
+    const { controller, service, calls } = setup(1); await start(controller); const complete = service.complete; let lose = true;
+    service.complete = async request => { const response = await complete(request); if (lose) { lose = false; throw new Error('Recap response lost'); } return response; };
+    await controller.nextPhase(); assert.ok(controller.state.error); await controller.endSession();
+    assert.deepEqual(calls.complete.map(value => value.status), ['completed', 'completed']); assert.equal(controller.state.view, 'recap'); controller.dispose();
+});
+test('only explicit Find another lesson advances sample revision after closure', async () => {
+    const { controller, calls } = setup(1); await start(controller); await controller.checkOffer(); assert.equal(calls.offer.length, 1);
+    await controller.endSession(); await controller.checkOffer(); assert.equal(calls.offer[1].revision, 2); assert.equal(calls.offer[1].referenceLessonId, 'webapp-architecture'); controller.dispose();
+});
+test('dispose invalidates pending responses and releases player resources', async () => {
+    const { controller, service } = setup(); const response = deferred(); service.offer = () => response.promise; let notifications = 0; controller.subscribe(() => notifications++);
+    const pending = controller.checkOffer(); controller.dispose(); const before = notifications;
+    response.resolve({ shouldOffer: true, offerId: 'o1', previewTopics: [], estimatedSeconds: 165 }); await pending;
+    assert.equal(notifications, before); assert.equal(controller.state.view, 'idle');
 });
 
-test('questions use separate audio and resume exact lesson position without refetching', async () => {
-    const { controller, audio, calls } = setup();
-    await start(controller);
-    const original = audio.tracks.lesson;
-    original.position = 12.5;
-    await controller.askQuestion('Why sessions?');
-    assert.equal(controller.state.view, 'question');
-    assert.equal(controller.state.phaseIndex, 0);
-    assert.equal(audio.track, 'answer');
-    await controller.resumeLesson();
-    assert.equal(audio.tracks.lesson, original);
-    assert.equal(original.position, 12.5);
-    assert.equal(audio.track, 'lesson');
-    assert.equal(calls.teach.length, 1);
-    assert.equal(calls.speech.length, 2);
+test('real player publishes current clip timing and ignores released clip updates', async () => {
+    const { controller } = setup(); await start(controller); const old = clip(); old.currentTime = 9; old.duration = 46;
+    old.emit('timeupdate'); assert.equal(controller.state.audioPosition, 9); assert.equal(controller.state.audioDuration, 46);
+    await controller.skipPhase(); old.currentTime = 20; old.emit('timeupdate'); assert.equal(controller.state.audioPosition, 0); controller.dispose();
 });
 
-test('heard, skipped, and self-reported familiarity remain distinct in completion', async () => {
-    const { controller, audio, calls } = setup();
-    await start(controller);
-    assert.equal(controller.state.statuses.p0, 'pending');
-    await controller.playPause();
-    assert.equal(controller.state.audioState, 'paused');
-    await controller.playPause();
-    audio.emit('ended');
-    assert.equal(controller.state.statuses.p0, 'heard');
-    await controller.nextPhase();
-    await controller.skipPhase();
-    await controller.markFamiliar();
-    assert.equal(controller.state.view, 'recap');
-    assert.deepEqual(calls.complete[0].learningState.phases, { p0: 'heard', p1: 'skipped', p2: 'familiar' });
-    assert.equal(calls.complete[0].status, 'completed');
+test('real widget presents architecture estimate, conceptual scope, explicit text completion and supported questions', async () => {
+    const { renderWidget } = require('./goldie-widget-test-utils.cjs');
+    const { controller } = setup(); await controller.checkOffer();
+    const offer = renderWidget(controller.state); assert.match(offer, /architecture/i); assert.match(offer, /3 min/);
+    await controller.acceptOffer(); const lesson = renderWidget(controller.state);
+    assert.match(lesson, /Explain more/); assert.match(lesson, /Mark read/); assert.match(lesson, /Conceptual/); assert.doesNotMatch(lesson, /mastered/i);
+    await controller.askQuestion('What is an API?'); const answer = renderWidget(controller.state);
+    assert.match(answer, /Supported questions/); assert.match(answer, /What is an API/); controller.dispose();
 });
 
-test('advancing and ending unplayed phases never records them as heard', async () => {
-    const { controller, calls } = setup(2);
-    await start(controller);
-    await controller.nextPhase();
-    await controller.endSession();
-    assert.deepEqual(calls.complete[0].learningState.phases, { p0: 'pending', p1: 'pending' });
-    assert.equal(calls.complete[0].status, 'dismissed');
+test('new narrow dock gets readable width while restored user width is respected', async () => {
+    const { viewContribution } = require('./goldie-widget-test-utils.cjs');
+    const fresh = viewContribution({ restored: false, width: 144 }); await fresh.onDidInitializeLayout();
+    assert.deepEqual(fresh.resizes, [[340, 'right']]);
+    const saved = viewContribution({ restored: true, width: 240 }); await saved.onDidInitializeLayout(); assert.deepEqual(saved.resizes, []);
+    const wide = viewContribution({ restored: false, width: 500 }); await wide.onDidInitializeLayout(); assert.deepEqual(wide.resizes, []);
 });
 
-test('zero-phase sessions remain safe and can complete', async () => {
-    const { controller, calls } = setup(0);
-    await start(controller);
-    assert.equal(controller.state.view, 'lesson');
-    assert.equal(calls.teach.length, 0);
-    await controller.nextPhase();
-    assert.equal(controller.state.view, 'recap');
+test('failed teach after skip retries content without advancing another phase', async () => {
+    const { controller, calls, service } = setup(); await start(controller); const teach = service.teach;
+    service.teach = async () => { throw new Error('Text unavailable'); }; await controller.skipPhase();
+    assert.equal(controller.state.phaseIndex, 1); service.teach = teach; await controller.retry();
+    assert.equal(controller.state.phaseIndex, 1); assert.equal(controller.state.explanation.contentId, 'p1-standard');
+    assert.deepEqual(calls.action.map(value => value.action), ['skip']); controller.dispose();
 });
 
-test('provider failure retains text and Play retries speech', async () => {
-    const { controller, service, calls } = setup(1);
-    const speech = service.speech;
-    service.speech = async () => { throw new Error('Voice unavailable'); };
-    await start(controller);
-    assert.equal(controller.state.explanation.explanation, 'Explain p0');
-    assert.equal(controller.state.error, 'Voice unavailable');
-    assert.equal(controller.state.busy, false);
-    service.speech = speech;
-    await controller.playPause();
-    assert.equal(controller.state.audioState, 'playing');
-    assert.equal(controller.state.error, undefined);
-    assert.equal(calls.teach.length, 1);
+test('released answer events after resume cannot mark the lesson ended', async () => {
+    const { controller, calls } = setup(); await start(controller); await controller.askQuestion('What is an API?'); const answer = clip();
+    await controller.resumeLesson(); answer.emit('ended'); answer.emit('play'); await tick();
+    assert.equal(controller.state.view, 'lesson'); assert.equal(controller.state.phaseIndex, 0); assert.equal(controller.state.audioState, 'playing');
+    assert.equal(calls.action.filter(value => value.action === 'phase_completed').length, 0); controller.dispose();
 });
 
-test('failed teach and question requests can be retried and do not advance phase', async () => {
-    const { controller, service } = setup();
-    const teach = service.teach;
-    service.teach = async () => { throw new Error('Teach unavailable'); };
-    await start(controller);
-    service.teach = teach;
-    await controller.playPause();
-    const ask = service.ask;
-    service.ask = async () => { throw new Error('Question unavailable'); };
-    await controller.askQuestion('Why?');
-    assert.equal(controller.state.error, 'Question unavailable');
-    assert.equal(controller.state.phaseIndex, 0);
-    service.ask = ask;
-    await controller.askQuestion('Why?');
-    assert.equal(controller.state.answer.kind, 'answer');
-    await controller.resumeLesson();
-    assert.equal(controller.state.view, 'lesson');
+test('mark read from a paused lesson explicitly resumes before server completion', async () => {
+    const { controller, calls } = setup(); await start(controller); await controller.playPause(); await controller.nextPhase();
+    assert.equal(controller.state.phaseIndex, 1); assert.equal(controller.state.statuses.p0, 'heard');
+    assert.deepEqual(calls.action.map(value => value.action), ['pause', 'resume', 'phase_completed']); controller.dispose();
 });
 
-test('dispose ignores pending responses and releases audio/listeners', async () => {
-    const { controller, service, audio } = setup();
-    let resolve;
-    service.offer = () => new Promise(done => { resolve = done; });
-    let notifications = 0;
-    controller.subscribe(() => notifications++);
-    const pending = controller.checkOffer();
-    controller.dispose();
-    const before = notifications;
-    resolve({ shouldOffer: true, offerId: 'late', previewTopics: [] });
-    await pending;
-    assert.equal(notifications, before);
-    assert.equal(controller.state.view, 'idle');
-    assert.equal(audio.disposed, true);
+test('ending after a lost skip response derives the recap progress from server', async () => {
+    const { controller, calls, service } = setup(); await start(controller); const action = service.action;
+    service.action = async (...args) => { await action(...args); throw new Error('Lost response'); };
+    await controller.skipPhase(); assert.equal(controller.state.statuses.p0, 'pending'); await controller.endSession();
+    assert.equal(controller.state.view, 'recap'); assert.equal(controller.state.statuses.p0, 'skipped');
+    assert.deepEqual(calls.action.map(value => value.action), ['skip']); controller.dispose();
 });
 
-test('end cancels a pending speech response and reports truthful recap', async () => {
-    const { controller, service, audio } = setup();
-    let resolve;
-    service.speech = () => new Promise(done => { resolve = done; });
-    await controller.checkOffer();
-    const pending = controller.acceptOffer();
-    while (!resolve) { await new Promise(done => setImmediate(done)); }
-    await controller.endSession();
-    resolve({ mimeType: 'audio/mpeg', dataBase64: 'YQ==' });
-    await pending;
-    assert.equal(controller.state.view, 'recap');
-    assert.equal(audio.loads, 0);
-    assert.equal(controller.state.statuses.p0, 'pending');
+test('natural end while the play promise settles still completes exactly one phase', async () => {
+    const { controller, calls } = setup(); const play = MediaElement.prototype.play;
+    let first = true;
+    MediaElement.prototype.play = async function () { await play.call(this); if (first) { first = false; this.emit('ended'); } };
+    try {
+        await start(controller); await settled(controller);
+        assert.equal(controller.state.phaseIndex, 1); assert.deepEqual(calls.action.map(value => value.action), ['phase_completed']);
+    } finally { MediaElement.prototype.play = play; controller.dispose(); }
 });
 
-test('completion failure can retry without losing phase learning state', async () => {
-    const { controller, service, audio, calls } = setup(1);
-    await start(controller);
-    audio.emit('ended');
-    const complete = service.complete;
-    service.complete = async () => { throw new Error('Recap unavailable'); };
-    await controller.endSession();
-    assert.equal(controller.state.error, 'Recap unavailable');
-    assert.equal(controller.state.busy, false);
-    service.complete = complete;
-    await controller.endSession();
-    assert.equal(controller.state.recap.recap, 'Your recap');
-    assert.deepEqual(calls.complete[0].learningState.phases, { p0: 'heard' });
+test('pending acceptance survives disposal before its response and restores without audio', async () => {
+    const { controller, service, calls, storage } = setup(); const startSession = service.startSession; const delay = deferred();
+    service.startSession = async request => { const session = await startSession(request); await delay.promise; return session; };
+    await controller.checkOffer(); const pending = controller.acceptOffer();
+    for (let i = 0; i < 30 && !calls.start.length; i++) { await tick(); }
+    assert.deepEqual(JSON.parse(storage.getItem('goldie.reference-session.v1')), { offerId: 'o1', revision: 1 });
+    controller.dispose(); service.startSession = startSession;
+    const restored = new GoldieLessonController(service, new GoldieAudioPlayer(), storage);
+    await restored.restore(); delay.resolve(); await pending;
+    assert.equal(restored.state.session.sessionId, 's1'); assert.equal(restored.state.restored, true);
+    assert.equal(restored.state.audioState, 'paused'); assert.equal(calls.start.length, 2); assert.deepEqual(calls.start[0], calls.start[1]);
+    assert.equal(calls.teach.length, 0); assert.equal(calls.speech.length, 0);
+    assert.deepEqual(JSON.parse(storage.getItem('goldie.reference-session.v1')), { sessionId: 's1', revision: 1 }); restored.dispose();
 });
 
-test('media error allows speech retry without losing explanation', async () => {
-    const { controller, audio, calls } = setup(1);
-    await start(controller);
-    audio.emit('error');
-    assert.equal(controller.state.audioState, 'error');
-    await controller.playPause();
-    assert.equal(calls.speech.length, 2);
-    assert.equal(controller.state.explanation.explanation, 'Explain p0');
+test('lost acceptance response recovers the same session after restart without autoplay', async () => {
+    const { controller, service, calls, storage } = setup(); const startSession = service.startSession;
+    service.startSession = async request => { await startSession(request); throw new Error('Acceptance response lost'); };
+    await start(controller); assert.ok(controller.state.error); assert.equal(controller.state.session, undefined);
+    controller.dispose(); service.startSession = startSession;
+    const restored = new GoldieLessonController(service, new GoldieAudioPlayer(), storage); await restored.restore();
+    assert.equal(restored.state.session.sessionId, 's1'); assert.equal(calls.start.length, 2); assert.deepEqual(calls.start[0], calls.start[1]);
+    assert.equal(calls.offer.length, 1); assert.equal(calls.teach.length, 0); assert.equal(calls.speech.length, 0); restored.dispose();
+});
+
+test('unavailable recovery storage prevents acceptance until the user can retry saving', async () => {
+    const storage = memory(); const save = storage.setItem; storage.setItem = () => { throw new Error('Storage unavailable'); };
+    const { controller, calls } = setup(3, storage); await start(controller);
+    assert.equal(calls.start.length, 0); assert.match(controller.state.error, /save.*recover/i); assert.equal(controller.state.retryable, true);
+    storage.setItem = save; await controller.retry(); assert.equal(controller.state.session.sessionId, 's1'); controller.dispose();
+});
+
+test('failed session-reference replacement retains the persisted pending offer for recovery', async () => {
+    const storage = memory(); const save = storage.setItem; let writes = 0;
+    storage.setItem = (...args) => { if (++writes === 2) { throw new Error('Disk full'); } save(...args); };
+    const { controller, service, calls } = setup(3, storage); await start(controller);
+    assert.deepEqual(JSON.parse(storage.getItem('goldie.reference-session.v1')), { offerId: 'o1', revision: 1 });
+    assert.match(controller.state.error, /save/i); controller.dispose(); const speechBefore = calls.speech.length;
+    const restored = new GoldieLessonController(service, new GoldieAudioPlayer(), storage); await restored.restore();
+    assert.equal(restored.state.session.sessionId, 's1'); assert.equal(calls.start.length, 2); assert.equal(calls.speech.length, speechBefore); restored.dispose();
+});
+
+test('safe nonretryable RPC failures display their message without retry controls or retry work', async () => {
+    const { renderWidget } = require('./goldie-widget-test-utils.cjs');
+    const { controller, service, calls } = setup(); await start(controller);
+    let attempts = 0;
+    service.speech = async () => { attempts++; throw Object.assign(new Error('Speech is not configured.'), { code: -32001, data: { apiCode: 'SPEECH_UNAVAILABLE' } }); };
+    await controller.askQuestion('What is an API?'); assert.equal(controller.state.retryable, false);
+    assert.equal(controller.state.error, 'Speech is not configured.'); assert.doesNotMatch(renderWidget(controller.state), /Retry last request/);
+    assert.match(renderWidget(controller.state), /Play answer audio/); assert.doesNotMatch(renderWidget(controller.state), /Retry answer audio/);
+    await controller.retry(); assert.equal(attempts, 1); assert.equal(calls.ask.length, 1); controller.dispose();
+});
+
+test('nonretryable lesson speech offers explicit Play after correction without advertising Retry', async () => {
+    const { renderWidget } = require('./goldie-widget-test-utils.cjs'); const { controller, service } = setup();
+    const speak = service.speech; let attempts = 0;
+    service.speech = async () => { attempts++; throw Object.assign(new Error('Speech is not configured.'), { code: -32001 }); };
+    await start(controller); const markup = renderWidget(controller.state);
+    assert.match(markup, /Play lesson audio/); assert.doesNotMatch(markup, /Retry lesson audio/); assert.doesNotMatch(markup, /Retry last request/);
+    await controller.retry(); assert.equal(attempts, 1); service.speech = speak; await controller.playPause();
+    assert.equal(controller.state.audioState, 'playing'); controller.dispose();
 });

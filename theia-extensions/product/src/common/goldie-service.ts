@@ -9,11 +9,14 @@
 
 import type {
     OfferRequest, OfferResponse, SessionRequest, SessionResponse, TeachRequest, TeachResponse,
-    AskRequest, AskResponse, CompleteRequest, CompleteResponse, SpeechRequest
+    AskRequest, AskResponse, CompleteRequest, CompleteResponse, SpeechRequest, SessionActionRequest
 } from '@goldie/contracts';
 
 export const GoldieService = Symbol('GoldieService');
 export const GOLDIE_SERVICE_PATH = '/services/goldie';
+/** Theia ApplicationError codes survive Node/RPC serialization. */
+export const GOLDIE_NONRETRYABLE_ERROR_CODE = -32001;
+export const GOLDIE_RETRYABLE_ERROR_CODE = -32002;
 
 export interface GoldieHealth {
     connected: boolean;
@@ -30,6 +33,8 @@ export interface GoldieService {
     checkHealth(): Promise<GoldieHealth>;
     offer(request: OfferRequest): Promise<OfferResponse>;
     startSession(request: SessionRequest): Promise<SessionResponse>;
+    getSession(sessionId: string): Promise<SessionResponse>;
+    action(sessionId: string, request: SessionActionRequest): Promise<SessionResponse>;
     teach(request: TeachRequest): Promise<TeachResponse>;
     ask(request: AskRequest): Promise<AskResponse>;
     complete(request: CompleteRequest): Promise<CompleteResponse>;

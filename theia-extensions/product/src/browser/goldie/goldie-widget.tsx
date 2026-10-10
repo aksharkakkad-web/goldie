@@ -53,6 +53,7 @@ export class GoldieWidget extends ReactWidget {
 
         this.update();
         this.checkConnection();
+        this.lessonController.restore();
     }
 
     protected async checkConnection(): Promise<void> {
@@ -124,15 +125,12 @@ export class GoldieWidget extends ReactWidget {
     }
 
     protected renderError(): React.ReactNode {
-        const { error, view, busy } = this.lessonState;
+        const { error, retryable, busy } = this.lessonState;
         if (!error) { return undefined; }
-        const retry = view === 'idle'
-            ? () => this.lessonController.checkOffer()
-            : view === 'offer' ? () => this.lessonController.acceptOffer() : undefined;
         return <div className='goldie-error' role='alert'>
             <strong>Goldie hit a snag.</strong>
             <p>{error}</p>
-            {retry && <button className='theia-button secondary' disabled={busy} onClick={retry}>Try again</button>}
+            {retryable && <button className='theia-button secondary' disabled={busy} onClick={() => this.lessonController.retry()}>Retry last request</button>}
         </div>;
     }
 
@@ -142,7 +140,7 @@ export class GoldieWidget extends ReactWidget {
         return <div className='goldie-view goldie-idle-view'>
             <div className='goldie-hero-mark' aria-hidden='true'>g</div>
             <h2>Learn as you build.</h2>
-            <p className='goldie-intro'>Explore a prepared authentication example and hear the engineering ideas behind it while you keep coding.</p>
+            <p className='goldie-intro'>Explore how a web app connects its frontend, backend/API and database through a small team-management example.</p>
             {unavailable
                 ? <div className='goldie-connection-card'>
                     <strong>Can't reach Goldie yet.</strong>
@@ -151,13 +149,13 @@ export class GoldieWidget extends ReactWidget {
                 </div>
                 : <div className='goldie-ready-card'>
                     <span className={codicon('check')} aria-hidden='true' />
-                    <div><strong>Ready to explore authentication.</strong><p>Prepare a short lesson from Goldie's example team app.</p></div>
+                    <div><strong>Explore web-app architecture.</strong><p>Follow a team from its form to the API and database.</p></div>
                 </div>}
             <button className='theia-button goldie-primary-action' disabled={busy || unavailable} onClick={() => this.lessonController.checkOffer()}>
                 {busy ? 'Preparing a lesson…' : 'Prepare lesson'}
             </button>
             {offer && !offer.shouldOffer && <p className='goldie-empty-result' role='status'>No lesson is suggested for this build yet. Keep coding and check again later.</p>}
-            <p className='goldie-note'>Learning is opt-in. Nothing plays automatically.</p>
+            <p className='goldie-note'>Learning is opt-in. Audio starts after you choose Explain. This conceptual example does not inspect your project files.</p>
         </div>;
     }
 
@@ -166,8 +164,9 @@ export class GoldieWidget extends ReactWidget {
         const topics = offer?.previewTopics ?? [];
         return <div className='goldie-view goldie-offer-view'>
             <p className='goldie-eyebrow'>LESSON READY</p>
-            <h2>Learn how authentication protects an app?</h2>
-            <p className='goldie-intro'>This prepared example follows authentication work in a small team app.</p>
+            <h2>Explore the architecture behind a web app?</h2>
+            <p className='goldie-intro'>Follow the frontend, backend/API and database as someone creates a team.</p>
+            {offer?.estimatedSeconds && <p className='goldie-note'>About {Math.ceil(offer.estimatedSeconds / 60)} min of listening · estimate</p>}
             {topics.length > 0 && <ol className='goldie-topic-list' aria-label='Lesson topics'>
                 {topics.map((topic, index) => <li key={`${index}-${topic}`}><span>{index + 1}</span><p>{topic}</p></li>)}
             </ol>}
@@ -175,19 +174,20 @@ export class GoldieWidget extends ReactWidget {
                 <button className='theia-button' disabled={busy} onClick={() => this.lessonController.acceptOffer()}>{busy ? 'Preparing lesson…' : 'Explain this build'}</button>
                 <button className='theia-button secondary' disabled={busy} onClick={() => this.lessonController.declineOffer()}>Not now</button>
             </div>
-            <p className='goldie-note'>Audio begins only after you choose to start.</p>
+            <p className='goldie-note'>Audio begins after Explain. Conceptual teaching; your project files have not been inspected.</p>
         </div>;
     }
 
     protected phaseStatusLabel(status: GoldiePhaseStatus, isCurrent: boolean): string {
-        if (status === 'heard') { return 'Heard'; }
+        if (status === 'heard') { return 'Covered'; }
         if (status === 'skipped') { return 'Skipped'; }
         if (status === 'familiar') { return 'Already familiar'; }
         return isCurrent ? 'Current phase' : 'Upcoming';
     }
 
     protected phaseStatusIcon(status: GoldiePhaseStatus, index: number): string {
-        if (status === 'heard' || status === 'familiar') { return '✓'; }
+        if (status === 'heard') { return '✓'; }
+        if (status === 'familiar') { return '≈'; }
         if (status === 'skipped') { return '↷'; }
         return `${index + 1}`;
     }
@@ -215,7 +215,7 @@ export class GoldieWidget extends ReactWidget {
         }
         return <form className='goldie-question-form' onSubmit={event => this.submitQuestion(event)}>
             <label htmlFor='goldie-question'>What would you like to understand?</label>
-            <textarea id='goldie-question' rows={3} value={this.questionDraft} disabled={busy} placeholder='Ask about this phase…'
+            <textarea id='goldie-question' rows={3} maxLength={1000} value={this.questionDraft} disabled={busy} placeholder='For example: What is an API?'
                 onChange={event => { this.questionDraft = event.currentTarget.value; this.update(); }}
                 onKeyDown={event => {
                     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
@@ -232,12 +232,12 @@ export class GoldieWidget extends ReactWidget {
     }
 
     protected renderLesson(): React.ReactNode {
-        const { session, phaseIndex, explanation, audioState, busy } = this.lessonState;
+        const { session, phaseIndex, explanation, audioState, audioPosition, audioDuration, restored, retryable, busy } = this.lessonState;
         const phase = session?.phases[phaseIndex];
         if (!session || !phase) {
             return <div className='goldie-view'>
-                <h2>No lesson phases were prepared.</h2>
-                <p className='goldie-intro'>Goldie returned an empty learning path. End this session and try finding a lesson again.</p>
+                <h2>Your learning path is covered.</h2>
+                <p className='goldie-intro'>Your progress is saved. Retry the last request to retrieve the recap.</p>
                 <button className='theia-button goldie-primary-action' onClick={() => this.lessonController.endSession()}>End session</button>
             </div>;
         }
@@ -249,7 +249,7 @@ export class GoldieWidget extends ReactWidget {
                 : audioState === 'paused'
                     ? 'Explanation paused'
                     : audioState === 'error'
-                        ? 'Retry lesson audio'
+                        ? retryable === false ? 'Play lesson audio' : 'Retry lesson audio'
                         : 'Listen to this phase';
         const audioHelp = !explanation
             ? 'Prepare this phase and its audio again.'
@@ -263,6 +263,8 @@ export class GoldieWidget extends ReactWidget {
             </div>
             <h2>{phase.title}</h2>
             <p className='goldie-objective'>{phase.objective}</p>
+            {restored && <p className='goldie-note' role='status'>Saved lesson restored. Choose Play to continue; audio stays paused until then.</p>}
+            <p className='goldie-note'>Conceptual explanation · project implementation has not been inspected.</p>
             <div className='goldie-explanation' aria-live='polite'>
                 {busy && !explanation
                     ? <p className='goldie-loading'><span className={codicon('loading', true)} aria-hidden='true' /> Preparing this explanation…</p>
@@ -273,7 +275,9 @@ export class GoldieWidget extends ReactWidget {
                     aria-label={!explanation ? 'Prepare explanation' : audioPlaying ? 'Pause lesson audio' : 'Play lesson audio'}>
                     <span className={codicon(!explanation ? 'refresh' : audioPlaying ? 'debug-pause' : 'play')} aria-hidden='true' />
                 </button>
-                <div><strong>{audioTitle}</strong>
+                <div className='goldie-player-detail'><strong>{audioTitle}</strong>
+                    {(audioDuration ?? 0) > 0 && <><progress aria-label='Audio progress' max={audioDuration} value={Math.min(audioPosition ?? 0, audioDuration!)} />
+                        <small>{this.formatTime(audioPosition ?? 0)} / {this.formatTime(audioDuration!)}</small></>}
                     <small>{audioHelp}</small></div>
             </div>
             {explanation && audioState === 'error' && <p className='goldie-audio-error' role='status'>Audio could not play. The full explanation is still available above.</p>}
@@ -282,34 +286,40 @@ export class GoldieWidget extends ReactWidget {
                 <button disabled={busy} onClick={() => this.lessonController.markFamiliar()}>I already know this</button>
             </div>
             {this.renderQuestionComposer()}
+            <button className='theia-button secondary goldie-next-button' disabled={busy} onClick={() => this.lessonController.explainMore()}>Explain more</button>
             <button className='theia-button goldie-next-button' disabled={busy || !explanation} onClick={() => this.lessonController.nextPhase()}>
-                {phaseIndex === session.phases.length - 1 ? 'Finish lesson' : 'Next phase'}
+                {phaseIndex === session.phases.length - 1 ? 'Mark read & finish' : 'Mark read & continue'}
             </button>
+            <p className='goldie-note'>Listening advances automatically. Mark read records this topic as covered; it does not assess mastery.</p>
             {this.renderRoadmap()}
         </div>;
     }
 
     protected renderQuestion(): React.ReactNode {
-        const { question, answer, busy, phaseIndex, audioState } = this.lessonState;
+        const { question, answer, addOn, busy, phaseIndex, audioState, retryable } = this.lessonState;
         const answered = answer?.kind === 'answer';
         return <div className='goldie-view goldie-question-view'>
-            <p className='goldie-eyebrow'>QUESTION</p>
+            <p className='goldie-eyebrow'>{addOn ? 'EXPLAIN MORE' : 'QUESTION'}</p>
             <h2>Your lesson is paused.</h2>
             <p className='goldie-saved-note'><span className={codicon('bookmark')} aria-hidden='true' /> Your place in phase {phaseIndex + 1} is saved.</p>
             {question && <blockquote>{question}</blockquote>}
             <div className='goldie-answer' aria-live='polite'>
-                {busy && !answer ? <p className='goldie-loading'><span className={codicon('loading', true)} aria-hidden='true' /> Preparing an answer…</p>
-                    : answered ? <><h3>Goldie's answer</h3><p>{answer.answer}</p></>
+                {busy && !answer && !addOn ? <p className='goldie-loading'><span className={codicon('loading', true)} aria-hidden='true' /> Preparing an answer…</p>
+                    : addOn ? <><h3>A closer look</h3><p>{addOn.explanation}</p></>
+                        : answered ? <><h3>Goldie's answer</h3><p>{answer.answer}</p></>
                         : answer?.kind === 'needs_sources'
                             ? <><h3>More context needed</h3><p>Goldie needs project sources before it can answer this question. Your lesson position is still saved.</p></>
                             : <><h3>No answer received</h3><p>You can try this question again or return to the lesson.</p></>}
             </div>
-            {answered && <button className='theia-button secondary goldie-answer-audio' disabled={busy}
+            {answered && answer.supportedQuestions && <section className='goldie-supported-questions' aria-label='Supported questions'>
+                <h3>Supported questions</h3><ul>{answer.supportedQuestions.map(supported => <li key={supported}>
+                    <button disabled={busy} onClick={() => this.lessonController.askQuestion(supported)}>{supported}</button>
+                </li>)}</ul>
+            </section>}
+            {(answered || addOn) && <button className='theia-button secondary goldie-answer-audio' disabled={busy}
                 onClick={() => this.lessonController.playPause()}>
-                {audioState === 'playing' ? 'Pause answer audio' : audioState === 'error' ? 'Retry answer audio' : 'Play answer audio'}
+                {audioState === 'playing' ? 'Pause answer audio' : audioState === 'error' && retryable !== false ? 'Retry answer audio' : 'Play answer audio'}
             </button>}
-            {!busy && !answer && question && <button className='theia-button secondary goldie-answer-audio'
-                onClick={() => this.lessonController.askQuestion(question)}>Try question again</button>}
             <div className='goldie-question-actions'>
                 <button className='theia-button' disabled={busy} onClick={() => this.lessonController.resumeLesson()}>Resume phase {phaseIndex + 1}</button>
                 <button className='theia-button secondary' onClick={() => this.lessonController.endSession()}>End session</button>
@@ -329,11 +339,11 @@ export class GoldieWidget extends ReactWidget {
             <p className='goldie-intro'>{recap?.recap ?? 'Your lesson session has ended.'}</p>
             <dl className='goldie-recap-list'>
                 <div><dt>Topics in this path</dt><dd>{session?.phases.length ?? values.length}</dd></div>
-                <div><dt>Heard this session</dt><dd>{heard}</dd></div>
+                <div><dt>Covered this session</dt><dd>{heard}</dd></div>
                 <div><dt>Skipped</dt><dd>{skipped}</dd></div>
-                <div><dt>Already familiar</dt><dd>{familiar}</dd></div>
+                <div><dt>Self-reported familiarity</dt><dd>{familiar}</dd></div>
             </dl>
-            <p className='goldie-note'>Skipped or unplayed phases are not marked as learned.</p>
+            <p className='goldie-note'>Covered topics include listening or marking text as read. Familiarity is self-reported; this lesson does not assess mastery.</p>
             <button className='theia-button secondary goldie-primary-action' disabled={busy} onClick={() => this.lessonController.checkOffer()}>Find another lesson</button>
         </div>;
     }
@@ -346,6 +356,10 @@ export class GoldieWidget extends ReactWidget {
             case 'recap': return this.renderRecap();
             default: return this.renderIdle();
         }
+    }
+
+    protected formatTime(seconds: number): string {
+        return `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
     }
 
     protected render(): React.ReactNode {
@@ -361,7 +375,7 @@ export class GoldieWidget extends ReactWidget {
                 {this.renderError()}
                 {this.renderLessonView()}
             </div>
-            <footer className='goldie-panel-footer'>Prepared authentication lesson · service connection required</footer>
+            <footer className='goldie-panel-footer'>Web-app architecture · conceptual teaching</footer>
         </section>;
     }
 }

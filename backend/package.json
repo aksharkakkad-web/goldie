@@ -9,13 +9,15 @@
     "lint": "eslint --ext ts src test",
     "start": "node lib/src/server.js",
     "test": "yarn build && mocha \"lib/test/**/*.test.js\"",
-    "smoke:elevenlabs": "node lib/src/smoke-elevenlabs.js"
+    "smoke:elevenlabs": "node lib/src/smoke-elevenlabs.js",
+    "smoke:speech": "node lib/src/smoke-speech.js"
   },
   "dependencies": {
     "@fastify/cors": "11.3.1",
     "@goldie/contracts": "0.0.0",
     "dotenv": "18.0.7",
-    "fastify": "5.12.5"
+    "fastify": "5.12.5",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/chai": "^4.3.20",
