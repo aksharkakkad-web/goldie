@@ -79,8 +79,10 @@
     "vscode.microsoft-authentication"
   ],
   "workspaces": [
+    "backend",
     "applications/*",
-    "theia-extensions/*"
+    "theia-extensions/*",
+    "shared/*"
   ],
   "resolutions": {
     "@types/puppeteer": "^5.4.7",

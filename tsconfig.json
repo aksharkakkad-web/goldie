@@ -7,6 +7,9 @@
   },
   "references": [
     {
+      "path": "shared/contracts"
+    },
+    {
       "path": "theia-extensions/launcher"
     },
     {
