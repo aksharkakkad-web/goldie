@@ -131,4 +131,3 @@ Stage 0 is complete only after steps 1–6 pass for Akshar's scope and the share
 - Preserve the upstream Theia history and Rishit's commits.
 - Commit only Stage 0 backend, contracts, tests, and affected documentation.
 - Do not push, open a pull request, merge, deploy, or publish without Akshar's explicit approval after the required delivery summary.
-
