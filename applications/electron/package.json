@@ -2,7 +2,7 @@
   "private": true,
   "name": "theia-ide-electron-app",
   "description": "Eclipse Theia IDE product",
-  "productName": "Theia IDE",
+  "productName": "Goldie",
   "version": "1.77.0-next-2026-10-07",
   "main": "scripts/theia-electron-main.js",
   "license": "MIT",
@@ -23,10 +23,11 @@
     "target": "electron",
     "frontend": {
       "config": {
-        "applicationName": "Theia IDE",
+        "applicationName": "Goldie",
         "reloadOnReconnect": true,
         "preferences": {
-          "toolbar.showToolbar": true
+          "toolbar.showToolbar": true,
+          "window.title": "${appName}${separator}${activeEditorShort}${separator}${rootName}"
         },
         "electron": {
           "appUserModelId": "eclipse.theia",
@@ -44,7 +45,7 @@
         "frontendConnectionTimeout": -1,
         "startupTimeout": -1,
         "resolveSystemPlugins": false,
-        "configurationFolder": ".theia-ide"
+        "configurationFolder": ".goldie-dev"
       }
     },
     "generator": {
@@ -167,7 +168,7 @@
     "build": "yarn -s rebuild && theia build --app-target=\"electron\" --mode development",
     "build:prod": "yarn -s rebuild && theia build --app-target=\"electron\"",
     "rebuild": "theia rebuild:electron --cacheRoot ../..",
-    "watch": "concurrently -n compile,build \"theiaext watch --preserveWatchOutput\" \"theia build --watch --mode development\"",
+    "watch": "concurrently -n compile,build \"tsc -b --watch --preserveWatchOutput\" \"theia build --watch --mode development\"",
     "start": "electron scripts/theia-electron-main.js --plugins=local-dir:../../plugins",
     "start:debug": "yarn start --log-level=debug",
     "package": "yarn clean:dist && yarn rebuild && electron-builder -c.mac.identity=null --publish never",

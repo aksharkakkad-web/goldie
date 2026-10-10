@@ -39,5 +39,12 @@ if (isAppImage) {
     process.env.THEIA_DEFAULT_PLUGINS = `local-dir:${bundledPluginsDir}`;
 }
 
+// Use the configured product name in the development Electron application.
+const { app } = require('electron');
+app.setName(require(packageJsonPath).productName);
+if (!app.isPackaged) {
+    process.env.THEIA_NO_SPLASH = '1';
+}
+
 // Handover to the auto-generated electron application handler.
 require('../lib/backend/electron-main.js');

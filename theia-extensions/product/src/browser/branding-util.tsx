@@ -11,7 +11,6 @@ import { codicon } from '@theia/core/lib/browser';
 import { WindowService } from '@theia/core/lib/browser/window/window-service';
 import { environment } from '@theia/core/lib/common';
 import * as React from 'react';
-import { getBrandingVariant } from './theia-ide-config';
 
 export interface ExternalBrowserLinkProps {
     text: string;
@@ -20,9 +19,7 @@ export interface ExternalBrowserLinkProps {
 }
 
 export function renderProductName(): React.ReactNode {
-    const variant = getBrandingVariant();
-    const suffix = variant !== 'stable' ? ` ${variant.charAt(0).toUpperCase() + variant.slice(1)}` : '';
-    return <h1>Eclipse Theia <span className="tide-branding-accent">IDE</span>{suffix}</h1>;
+    return <h1>Goldie <span className="tide-branding-accent">DEV</span></h1>;
 }
 
 export const DOWNLOAD_URL = 'https://theia-ide.org/#theiaidedownload';
@@ -50,11 +47,11 @@ export function renderWhatIs(windowService: WindowService): React.ReactNode {
             What is this?
         </h3>
         <div>
-            The Eclipse Theia IDE is a modern and open IDE for cloud and desktop, built on
+            Goldie is our development IDE, built on
             the <BrowserLink text="Theia platform" url="https://theia-ide.org" windowService={windowService} />.
         </div>
         <div>
-            You can get it as a <BrowserLink text="desktop application" url={DOWNLOAD_URL} windowService={windowService} /> or <BrowserLink
+            The upstream Theia IDE is available as a <BrowserLink text="desktop application" url={DOWNLOAD_URL} windowService={windowService} /> or <BrowserLink
                 text="try the latest version online" url="https://try.theia-cloud.io/" windowService={windowService} />. The online version is limited to
             30 minutes per session and hosted on <BrowserLink text="Theia Cloud" url="https://theia-cloud.io/" windowService={windowService} />.
         </div>
