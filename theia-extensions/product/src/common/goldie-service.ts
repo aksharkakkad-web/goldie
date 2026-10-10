@@ -7,6 +7,11 @@
  * SPDX-License-Identifier: MIT
  ********************************************************************************/
 
+import type {
+    OfferRequest, OfferResponse, SessionRequest, SessionResponse, TeachRequest, TeachResponse,
+    AskRequest, AskResponse, CompleteRequest, CompleteResponse, SpeechRequest
+} from '@goldie/contracts';
+
 export const GoldieService = Symbol('GoldieService');
 export const GOLDIE_SERVICE_PATH = '/services/goldie';
 
@@ -15,7 +20,18 @@ export interface GoldieHealth {
     message: string;
 }
 
+export interface GoldieSpeech {
+    mimeType: string;
+    dataBase64: string;
+}
+
 /** Local IDE transport only. Teaching and provider keys belong to the teaching backend. */
 export interface GoldieService {
     checkHealth(): Promise<GoldieHealth>;
+    offer(request: OfferRequest): Promise<OfferResponse>;
+    startSession(request: SessionRequest): Promise<SessionResponse>;
+    teach(request: TeachRequest): Promise<TeachResponse>;
+    ask(request: AskRequest): Promise<AskResponse>;
+    complete(request: CompleteRequest): Promise<CompleteResponse>;
+    speech(request: SpeechRequest): Promise<GoldieSpeech>;
 }
