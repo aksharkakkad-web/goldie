@@ -1,0 +1,418 @@
+/* Goldie's lesson flow stays compact and native to the active Theia theme. */
+.goldie-widget { overflow: hidden; }
+
+.goldie-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+}
+
+.goldie-panel .goldie-panel-header {
+    flex: 0 0 auto;
+    min-height: 46px;
+    margin: 0;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--theia-panel-border);
+}
+
+.goldie-panel .goldie-mark { width: 24px; height: 24px; border-radius: 6px; }
+.goldie-panel .goldie-close { width: 30px; min-height: 30px; padding: 0; border-radius: 3px; }
+.goldie-panel .goldie-close:hover { background: var(--theia-toolbar-hoverBackground); }
+
+.goldie-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 16px 18px 24px;
+    scrollbar-gutter: stable;
+}
+
+.goldie-panel .goldie-status {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 24px;
+    margin: 0 0 18px;
+    gap: 7px;
+}
+
+.goldie-status-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.goldie-status-action,
+.goldie-phase-meta button,
+.goldie-phase-actions button {
+    padding: 4px 0;
+    border: 0;
+    background: transparent;
+    color: var(--theia-textLink-foreground);
+    font: inherit;
+    cursor: pointer;
+}
+
+.goldie-status-action { margin-left: auto; padding-left: 8px; }
+.goldie-status-action:hover { text-decoration: underline; }
+
+.goldie-status-action:disabled,
+.goldie-phase-meta button:disabled,
+.goldie-phase-actions button:disabled {
+    color: var(--theia-disabledForeground);
+    cursor: default;
+    text-decoration: none;
+}
+
+.goldie-live-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+}
+
+.goldie-view { min-width: 0; }
+
+.goldie-panel .goldie-view h2 {
+    margin: 6px 0 10px;
+    font-size: 20px;
+    line-height: 1.28;
+    letter-spacing: -0.2px;
+    overflow-wrap: anywhere;
+}
+
+.goldie-panel .goldie-view h3 { margin: 0; font-size: 12px; font-weight: 600; }
+
+.goldie-eyebrow {
+    margin: 0 0 8px;
+    color: var(--theia-descriptionForeground);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.11em;
+}
+
+.goldie-panel .goldie-intro { margin: 0 0 22px; font-size: 13px; }
+
+.goldie-hero-mark {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    margin: 24px 0 16px;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--theia-editorWidget-background);
+    color: var(--theia-textLink-foreground);
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.goldie-ready-card,
+.goldie-connection-card,
+.goldie-error,
+.goldie-saved-note,
+.goldie-answer {
+    border: 1px solid var(--theia-panel-border);
+    border-radius: 5px;
+    background: var(--theia-editorWidget-background);
+}
+
+.goldie-ready-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 13px;
+}
+
+.goldie-ready-card > span { margin-top: 2px; color: var(--theia-testing-iconPassed); }
+.goldie-connection-card { padding: 14px; }
+
+.goldie-ready-card p,
+.goldie-connection-card p,
+.goldie-error p {
+    margin: 5px 0 0;
+    color: var(--theia-descriptionForeground);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.goldie-panel .goldie-primary-action {
+    width: 100%;
+    min-height: 34px;
+    margin-top: 14px;
+    white-space: normal;
+}
+
+.goldie-panel .goldie-note { margin: 14px 0 0; font-size: 11px; }
+
+.goldie-empty-result {
+    margin: 12px 0 0;
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.goldie-error {
+    margin: 0 0 16px;
+    padding: 12px;
+    border-color: var(--theia-inputValidation-errorBorder);
+}
+
+.goldie-error strong { color: var(--theia-errorForeground); }
+.goldie-error .theia-button { margin-top: 10px; }
+
+.goldie-topic-list,
+.goldie-roadmap ol { margin: 20px 0; padding: 0; list-style: none; }
+
+.goldie-topic-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--theia-panel-border);
+}
+
+.goldie-topic-list li:first-child { border-top: 1px solid var(--theia-panel-border); }
+
+.goldie-topic-list li > span,
+.goldie-roadmap-index {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid var(--theia-panel-border);
+    border-radius: 50%;
+    color: var(--theia-descriptionForeground);
+    font-size: 10px;
+}
+
+.goldie-topic-list p { margin: 2px 0 0; line-height: 1.45; }
+.goldie-actions { display: flex; gap: 8px; }
+
+.goldie-offer-actions .theia-button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 34px;
+    white-space: normal;
+}
+
+.goldie-phase-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+}
+
+.goldie-objective {
+    margin: 0 0 18px;
+    color: var(--theia-descriptionForeground);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.goldie-explanation { font-size: 13px; line-height: 1.68; }
+.goldie-explanation > p { margin: 0 0 18px; white-space: pre-wrap; }
+.goldie-loading { color: var(--theia-descriptionForeground); }
+
+.goldie-player {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin: 0 0 10px;
+    padding: 11px;
+    border: 1px solid var(--theia-panel-border);
+    border-radius: 5px;
+    background: var(--theia-editorWidget-background);
+}
+
+.goldie-play-button {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: var(--theia-button-background);
+    color: var(--theia-button-foreground);
+    cursor: pointer;
+}
+
+.goldie-play-button:hover:not(:disabled) { background: var(--theia-button-hoverBackground); }
+
+.goldie-play-button:disabled {
+    background: var(--theia-button-secondaryBackground);
+    color: var(--theia-disabledForeground);
+    cursor: default;
+}
+
+.goldie-player strong,
+.goldie-player small { display: block; }
+
+.goldie-player small {
+    margin-top: 3px;
+    color: var(--theia-descriptionForeground);
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+.goldie-audio-error {
+    margin: 0 0 12px;
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.goldie-phase-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 4px 0 18px;
+    font-size: 11px;
+}
+
+.goldie-panel .goldie-ask-open,
+.goldie-panel .goldie-next-button { width: 100%; min-height: 34px; white-space: normal; }
+.goldie-panel .goldie-next-button { margin-top: 8px; }
+
+.goldie-question-form {
+    margin: 0 0 8px;
+    padding: 13px;
+    border: 1px solid var(--theia-panel-border);
+    border-radius: 5px;
+    background: var(--theia-editorWidget-background);
+}
+
+.goldie-question-form label { display: block; margin-bottom: 7px; font-size: 12px; font-weight: 600; }
+
+.goldie-question-form textarea {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 74px;
+    resize: vertical;
+    border: 1px solid var(--theia-input-border, var(--theia-panel-border));
+    border-radius: 3px;
+    outline: none;
+    background: var(--theia-input-background);
+    color: var(--theia-input-foreground);
+    font: inherit;
+    line-height: 1.45;
+    padding: 8px;
+}
+
+.goldie-question-form textarea:focus { border-color: var(--theia-focusBorder); }
+.goldie-form-actions { display: flex; gap: 7px; margin-top: 9px; }
+
+.goldie-question-form small {
+    display: block;
+    margin-top: 8px;
+    color: var(--theia-descriptionForeground);
+    font-size: 10px;
+}
+
+.goldie-roadmap {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid var(--theia-panel-border);
+}
+
+.goldie-roadmap h3 {
+    color: var(--theia-descriptionForeground);
+    font-size: 10px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.goldie-roadmap ol { margin: 8px 0 0; }
+
+.goldie-roadmap li {
+    display: flex;
+    gap: 10px;
+    padding: 8px 0;
+    color: var(--theia-descriptionForeground);
+}
+
+.goldie-roadmap li.current { color: var(--theia-sideBar-foreground); }
+
+.goldie-roadmap li.current .goldie-roadmap-index {
+    border-color: var(--theia-focusBorder);
+    color: var(--theia-textLink-foreground);
+}
+
+.goldie-roadmap li > div { min-width: 0; }
+.goldie-roadmap strong,
+.goldie-roadmap small { display: block; overflow-wrap: anywhere; }
+.goldie-roadmap strong { font-size: 12px; font-weight: 500; }
+.goldie-roadmap small { margin-top: 2px; color: var(--theia-descriptionForeground); font-size: 10px; }
+
+.goldie-saved-note {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 14px 0 18px;
+    padding: 9px 10px;
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+}
+
+.goldie-question-view blockquote {
+    margin: 0 0 18px;
+    padding-left: 12px;
+    border-left: 2px solid var(--theia-focusBorder);
+    color: var(--theia-descriptionForeground);
+    line-height: 1.55;
+}
+
+.goldie-answer { padding: 14px; }
+.goldie-answer p { margin: 8px 0 0; line-height: 1.65; white-space: pre-wrap; }
+.goldie-panel .goldie-answer-audio { width: 100%; min-height: 32px; margin-top: 8px; white-space: normal; }
+.goldie-question-actions { display: flex; gap: 8px; margin-top: 14px; }
+.goldie-question-actions .theia-button { flex: 1 1 0; min-width: 0; min-height: 34px; white-space: normal; }
+.goldie-recap-list { margin: 20px 0 0; }
+
+.goldie-recap-list > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 0;
+    border-top: 1px solid var(--theia-panel-border);
+}
+
+.goldie-recap-list > div:last-child { border-bottom: 1px solid var(--theia-panel-border); }
+.goldie-recap-list dt { color: var(--theia-descriptionForeground); }
+.goldie-recap-list dd { margin: 0; font-weight: 600; }
+
+.goldie-panel .goldie-panel-footer {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 9px 16px;
+    border-top: 1px solid var(--theia-panel-border);
+    background: var(--theia-sideBar-background);
+    font-size: 10px;
+}
+
+.goldie-panel button:focus-visible,
+.goldie-panel textarea:focus-visible { outline: 1px solid var(--theia-focusBorder); outline-offset: 2px; }
+
+@media (max-width: 360px) {
+    .goldie-panel-body { padding-right: 14px; padding-left: 14px; }
+    .goldie-actions,
+    .goldie-form-actions,
+    .goldie-question-actions { flex-direction: column; }
+    .goldie-phase-actions { align-items: flex-start; flex-direction: column; gap: 4px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .goldie-panel * { scroll-behavior: auto !important; }
+}
