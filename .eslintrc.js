@@ -13,6 +13,12 @@ module.exports = {
     ],
     parserOptions: {
         tsconfigRootDir: __dirname,
-        project: ['./configs/tsconfig.eslint.json', './theia-extensions/*/tsconfig.json', 'applications/electron/tsconfig.eslint.json']
+        project: [
+            './configs/tsconfig.eslint.json',
+            './backend/tsconfig.json',
+            './shared/contracts/tsconfig.json',
+            './theia-extensions/*/tsconfig.json',
+            'applications/electron/tsconfig.eslint.json'
+        ]
     }
 };

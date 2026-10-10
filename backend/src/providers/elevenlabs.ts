@@ -1,3 +1,12 @@
+/********************************************************************************
+ * Copyright (C) 2026 Akshar Kakkad and others.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the MIT License, which is available in the project root.
+ *
+ * SPDX-License-Identifier: MIT
+ ********************************************************************************/
+
 export interface ElevenLabsCheckOptions {
     apiKey: string;
     baseUrl: string;
@@ -25,6 +34,7 @@ export async function checkElevenLabsCredential(
     try {
         response = await fetch(`${baseUrl}/v1/models`, {
             method: 'GET',
+            redirect: 'error',
             headers: {
                 Accept: 'application/json',
                 'xi-api-key': apiKey

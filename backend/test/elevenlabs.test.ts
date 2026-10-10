@@ -1,3 +1,12 @@
+/********************************************************************************
+ * Copyright (C) 2026 Akshar Kakkad and others.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the MIT License, which is available in the project root.
+ *
+ * SPDX-License-Identifier: MIT
+ ********************************************************************************/
+
 import { expect } from 'chai';
 import { AddressInfo } from 'node:net';
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
@@ -109,5 +118,26 @@ describe('ElevenLabs credential check', () => {
                 timeoutMs: 20
             }), 'ElevenLabs credential check timed out');
         });
+    });
+
+    it('does not forward the credential across redirects', async () => {
+        let redirectedRequests = 0;
+        await withServer((_request, response) => {
+            redirectedRequests += 1;
+            response.writeHead(200, { 'content-type': 'application/json' });
+            response.end('[]');
+        }, async redirectBaseUrl => {
+            await withServer((_request, response) => {
+                response.writeHead(302, { location: `${redirectBaseUrl}/capture` });
+                response.end();
+            }, async baseUrl => {
+                await expectRejected(checkElevenLabsCredential({
+                    apiKey: 'test-secret',
+                    baseUrl,
+                    timeoutMs: 500
+                }), 'ElevenLabs credential check could not reach the provider');
+            });
+        });
+        expect(redirectedRequests).to.equal(0);
     });
 });

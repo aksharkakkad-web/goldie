@@ -1,3 +1,12 @@
+/********************************************************************************
+ * Copyright (C) 2026 Akshar Kakkad and others.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the MIT License, which is available in the project root.
+ *
+ * SPDX-License-Identifier: MIT
+ ********************************************************************************/
+
 import { z } from 'zod';
 
 const IdentifierSchema = z.string().trim().min(1);
@@ -61,7 +70,7 @@ export const TeachRequestSchema = z.object({
 export const TeachResponseSchema = z.object({
     explanation: z.string(),
     groundingStatus: z.enum(['conceptual', 'inferred', 'observed']),
-    audioUrl: z.string().url().optional()
+    audioUrl: z.url().optional()
 }).strict();
 
 export const AskRequestSchema = z.object({

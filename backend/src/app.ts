@@ -1,3 +1,12 @@
+/********************************************************************************
+ * Copyright (C) 2026 Akshar Kakkad and others.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the MIT License, which is available in the project root.
+ *
+ * SPDX-License-Identifier: MIT
+ ********************************************************************************/
+
 import cors from '@fastify/cors';
 import { HealthResponse, HealthResponseSchema } from '@goldie/contracts';
 import Fastify, { FastifyInstance } from 'fastify';
@@ -7,9 +16,8 @@ export async function buildApp(config: BackendConfig): Promise<FastifyInstance> 
     const app = Fastify({ logger: false });
 
     await app.register(cors, {
-        origin: (origin, callback) => {
-            callback(null, origin === undefined || origin === config.allowedOrigin);
-        }
+        origin: (origin: string | undefined): Promise<boolean> =>
+            Promise.resolve(origin === undefined || origin === config.allowedOrigin)
     });
 
     app.get('/health', async (): Promise<HealthResponse> =>

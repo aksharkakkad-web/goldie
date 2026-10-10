@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf lib *.tsbuildinfo",
+    "lint": "eslint --ext ts src test",
     "start": "node lib/src/server.js",
     "test": "yarn build && mocha \"lib/test/**/*.test.js\"",
     "smoke:elevenlabs": "node lib/src/smoke-elevenlabs.js"
