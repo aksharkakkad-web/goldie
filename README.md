@@ -17,6 +17,19 @@ yarn download:plugins
 
 Then run `yarn electron watch` in one terminal and `yarn electron start .` in another. Reload the IDE window after the watcher finishes rebuilding.
 
+### Goldie backend
+
+```sh
+cp backend/.env.example backend/.env
+# Add ELEVENLABS_API_KEY to backend/.env; never commit this file.
+yarn backend:build
+yarn backend:test
+yarn backend:start
+```
+
+The local service listens at `http://127.0.0.1:8787` by default. Verify it with
+`curl http://127.0.0.1:8787/health`, then run `yarn backend:smoke:elevenlabs`.
+
 - [Development setup and troubleshooting](DEV_SETUP.md)
 - [Updated Goldie PRD and responsibilities](docs/Goldie_HackNC_PRD.md)
 

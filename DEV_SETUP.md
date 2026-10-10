@@ -47,6 +47,33 @@ For Electron main-process code, quit the desktop app and run the start command a
 For application dependency/configuration changes, stop watch, run `yarn electron build`, restart watch and the app.
 Run `yarn` only when dependencies change. Download plugins again only when the plugin list changes.
 
+## Goldie backend development
+
+The teaching backend is a separate local process so provider credentials never enter the Electron renderer.
+Create its ignored environment file once:
+
+```sh
+cp backend/.env.example backend/.env
+```
+
+Add `ELEVENLABS_API_KEY` to `backend/.env`, then build, test and start the service:
+
+```sh
+yarn backend:build
+yarn backend:test
+yarn backend:start
+```
+
+Keep the backend running in its own terminal alongside `yarn electron watch` and
+`yarn electron start .`. It listens on `http://127.0.0.1:8787` by default. Check the
+local route with `curl http://127.0.0.1:8787/health` and validate the provider key with
+`yarn backend:smoke:elevenlabs`.
+
+The backend accepts the local Theia origin configured by `GOLDIE_ALLOWED_ORIGIN`. If the
+desktop renderer uses a different development origin, set that variable in `backend/.env`
+and restart the backend. Never place ElevenLabs or other provider keys in Theia preferences,
+frontend code or renderer storage.
+
 ## Persistent terminals
 
 A tmux session named `goldie` keeps development processes independent of this chat.
