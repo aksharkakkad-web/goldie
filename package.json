@@ -36,6 +36,10 @@
     "yargs": "^17.7.3"
   },
   "scripts": {
+    "backend:build": "yarn workspace @goldie/backend build",
+    "backend:test": "yarn workspace @goldie/backend test",
+    "backend:start": "yarn workspace @goldie/backend start",
+    "backend:smoke:elevenlabs": "yarn workspace @goldie/backend smoke:elevenlabs",
     "clean": "lerna run clean && rimraf node_modules",
     "build": "yarn build:extensions && yarn build:applications",
     "build:dev": "yarn build:extensions && yarn build:applications:dev",
