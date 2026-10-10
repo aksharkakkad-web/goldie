@@ -10,7 +10,11 @@
 import '../../src/browser/style/index.css';
 
 import { AIRegistryConfiguration } from '@theia/ai-registry/lib/common/ai-registry-configuration';
-import { WidgetFactory } from '@theia/core/lib/browser';
+import { WidgetFactory, bindViewContribution, FrontendApplicationContribution } from '@theia/core/lib/browser';
+import { ServiceConnectionProvider } from '@theia/core/lib/browser/messaging/service-connection-provider';
+import { GoldieService, GOLDIE_SERVICE_PATH } from '../common/goldie-service';
+import { GoldieWidget } from './goldie/goldie-widget';
+import { GoldieViewContribution } from './goldie/goldie-view-contribution';
 import { AboutDialog } from '@theia/core/lib/browser/about-dialog';
 import { applyBranding } from './theia-ide-config';
 import { CommandContribution } from '@theia/core/lib/common/command';
@@ -24,6 +28,17 @@ import { TheiaIDEGettingStartedWidget } from './theia-ide-getting-started-widget
 
 export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     applyBranding();
+
+    bind(GoldieService).toDynamicValue(context =>
+        ServiceConnectionProvider.createLocalProxy<GoldieService>(context.container, GOLDIE_SERVICE_PATH)
+    ).inSingletonScope();
+    bind(GoldieWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(context => ({
+        id: GoldieWidget.ID,
+        createWidget: () => context.container.get(GoldieWidget)
+    })).inSingletonScope();
+    bindViewContribution(bind, GoldieViewContribution);
+    bind(FrontendApplicationContribution).toService(GoldieViewContribution);
 
     bind(TheiaIDEGettingStartedWidget).toSelf();
     bind(WidgetFactory).toDynamicValue(context => ({
