@@ -1,0 +1,80 @@
+{
+  "id": "webapp-architecture",
+  "version": 1,
+  "estimatedSeconds": 165,
+  "phases": [
+    {
+      "id": "frontend",
+      "title": "Frontend",
+      "objective": "Understand the interface and how a user action becomes a request.",
+      "description": "Forms, UI state, and the browser's conversation with the server.",
+      "explanation": "Think of a web app as three responsibilities working together. The frontend is the part someone sees and interacts with in their browser. In our team-management example, it shows a list of teams and a create-team form. When you type a name, the frontend keeps temporary UI state so the screen can update immediately. Clicking Create sends a request to the backend; it does not directly save a row in the database. While waiting, the interface can show progress and prevent accidental duplicate clicks. It then displays the result or a helpful error. These responsibilities are logical boundaries, not a requirement for three separate applications. A Next.js application can contain frontend pages and backend request handlers in the same project.",
+      "expanded": "UI state and stored data have different lifetimes. A half-written team name can live only in the browser, while a successfully created team should survive a refresh. Browser validation helps someone correct a mistake quickly, but it is not a security boundary: a caller can send requests without using your form. The backend must validate the request again.",
+      "deeperQuestion": "How is UI state different from stored data?"
+    },
+    {
+      "id": "backend",
+      "title": "Backend and API",
+      "objective": "Understand the trusted boundary that validates requests and applies business rules.",
+      "description": "API contracts, validation, authentication, and authorization.",
+      "explanation": "The backend is the trusted part of the application that receives requests and decides what is allowed to happen. An API is the contract for that conversation: what a caller sends and what a response means. For create team, a request might contain a team name. The backend checks that the name is valid, identifies the caller when authentication is required, and checks permission before creating anything. Authentication asks who you are; authorization asks what you may do. Business rules belong here because a browser can be modified or bypassed. The backend coordinates database work and returns a clear success or error response. In Next.js, server request handlers can provide this boundary without requiring a separate backend deployment.",
+      "expanded": "A useful API separates a request from the internal storage design. The browser asks to create a team rather than choosing arbitrary database operations. The backend can enforce rules such as which users may create teams and whether a name is acceptable. Credentials and privileged database access stay on the trusted server, never in downloadable browser code.",
+      "deeperQuestion": "Why do business rules belong on the backend?"
+    },
+    {
+      "id": "database",
+      "title": "Database and request flow",
+      "objective": "Understand durable storage and trace create team across all three responsibilities.",
+      "description": "Teams, memberships, consistency, and the complete request-response loop.",
+      "explanation": "The database holds information that should remain after a browser closes. In our example, teams and memberships are stored records: a team has an identity and name, and a membership connects a user to a team. Constraints help prevent invalid relationships, and a transaction can keep related changes together. Follow the complete journey: the frontend collects a name and sends a request. The backend validates it, checks the caller's permission, and asks the database to store the team and its initial membership. The database confirms the write, the backend returns a result, and the frontend updates the screen. If something fails, the interface should explain the failure rather than pretending the team exists. Frontend, backend, and database are cooperating responsibilities, even when some share a project or deployment.",
+      "expanded": "A transaction means a group of related changes succeeds together or does not take effect. Creating a team and assigning its first member should not leave half a result if one write fails. Database constraints provide another layer of correctness, but they do not replace backend permission checks. The response should describe the confirmed outcome, not just that work was attempted.",
+      "deeperQuestion": "Why use a transaction when creating a team?"
+    }
+  ],
+  "questions": [
+    {
+      "id": "api",
+      "question": "What is an API?",
+      "aliases": ["what is an api", "what is api", "explain api", "what does api mean"],
+      "answer": "An API is a contract between parts of a system: the requests a caller may send, the data those requests contain, and the responses they can expect. In our example, the browser asks the backend to create a team by sending a team name. The API describes that conversation without exposing the database's internal details."
+    },
+    {
+      "id": "direct-database",
+      "question": "Why not access the database directly?",
+      "aliases": ["why not access the database directly", "why cant the browser access the database directly", "why not access the database from the browser", "why not connect the frontend directly to the database"],
+      "answer": "For this architecture, the backend is the trusted gatekeeper. Putting privileged database credentials in browser code exposes them to users and lets callers bypass application rules. The backend validates the request and checks permission before using those credentials. Some managed systems safely expose limited browser access through server-enforced policies, but direct unrestricted database access is not the model in this prepared example."
+    },
+    {
+      "id": "authentication",
+      "question": "Where does authentication fit?",
+      "aliases": ["where does authentication fit", "what is authentication", "authentication vs authorization", "what is the difference between authentication and authorization"],
+      "answer": "Authentication identifies the caller, often using a verified session. Authorization decides what that caller may do. The frontend may show a sign-in screen, but the backend must verify the session and enforce permission for protected requests. In our example, a valid sign-in does not automatically grant access to every team: membership or another permission rule still matters."
+    },
+    {
+      "id": "request-flow",
+      "question": "What happens when I create a team?",
+      "aliases": ["what happens when i create a team", "explain the request flow", "how does create team work", "walk through create team", "what is the request flow"],
+      "answer": "The frontend reads the form and sends a create-team request. The backend validates the team name, verifies the caller when required, and checks permission. It writes the team and initial membership to the database, ideally in one transaction. After the database confirms success, the backend returns the confirmed team, and the frontend updates the screen. A failed write should produce an error instead of an invented success."
+    },
+    {
+      "id": "backend",
+      "question": "Why do we need a backend?",
+      "aliases": ["why do we need a backend", "what does the backend do", "what is a backend", "why do business rules belong on the backend", "why backend"],
+      "answer": "The backend provides a trusted boundary for validation, permissions, and business rules. A browser belongs to the user and can be changed or bypassed, so it cannot be the final authority. In our example, the backend decides whether a create-team request is allowed before changing stored data. It can live inside the same Next.js project as the frontend; logical separation does not require separate deployments."
+    },
+    {
+      "id": "ui-state",
+      "question": "How is UI state different from stored data?",
+      "aliases": ["how is ui state different from stored data", "what is ui state", "what is frontend state"],
+      "answer": "UI state describes what the screen is doing right now, such as a half-written form, an open menu, or a loading indicator. Stored data describes confirmed information that should survive a refresh, such as a saved team. The frontend can display a temporary draft, but it should not treat a create-team operation as durable until the backend confirms the database write."
+    },
+    {
+      "id": "transaction",
+      "question": "Why use a transaction when creating a team?",
+      "aliases": ["why use a transaction when creating a team", "what is a transaction", "why use a transaction"],
+      "answer": "A transaction groups related database changes so they succeed together or none take effect. When creating a team also requires adding its first membership, failure should not leave an orphan team or a membership pointing to a missing team. A transaction protects that consistency; backend permission checks still decide whether the operation is allowed."
+    }
+  ],
+  "deeperAliases": ["explain more", "go deeper", "tell me more", "can you explain more"],
+  "unsupportedAnswer": "I can answer prepared questions about this web app architecture lesson, but I cannot yet answer arbitrary questions or verify your project's files. Try one of the suggested questions."
+}

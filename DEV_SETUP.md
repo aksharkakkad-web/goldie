@@ -158,5 +158,8 @@ Upstream deprecation and unsupported plugin-activation warnings remain, without 
 
 The reviewed product specification is saved at `docs/Goldie_HackNC_PRD.md`.
 Stage 0 implements the Goldie connection panel, teaching backend, shared API contracts,
-and real ElevenLabs credential validation. Gemini, spoken lessons, onboarding and handoff
-integration remain later-stage work.
+and real ElevenLabs credential validation. The Stage 1 backend adds prepared web-app
+architecture lessons, local persistent session/progress state, Q&A, recap and ElevenLabs
+speech generation/cache. Rishit's lesson UI/playback integration, onboarding, Gemini
+and live handoffs remain pending. See `docs/stage1-api.md` for the exact client sequence,
+environment variables, `yarn test:stage1`, and the opt-in real-speech smoke command.
