@@ -4,7 +4,7 @@ import { loadConfig } from './config';
 import { checkElevenLabsCredential } from './providers/elevenlabs';
 
 async function main(): Promise<void> {
-    dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+    dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
     const config = loadConfig();
     await checkElevenLabsCredential({
         apiKey: config.elevenLabsApiKey ?? '',
