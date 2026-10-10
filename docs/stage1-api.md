@@ -5,9 +5,9 @@ frontend → backend/API → database, connected through creating a team. Next.j
 host frontend and server responsibilities in one project. This is not a generated
 application, inspected source code, live Gemini teaching, or Codex integration.
 
-Rishit owns the Theia UI and Node/RPC transport. The desktop still has the Stage 0
-connection panel. The overall Stage 1 gate stays open until the native desktop
-demonstrates the entire spoken workflow with both sides integrated.
+Rishit's Theia UI and Akshar's backend are connected through the local Node/RPC
+transport. The native spoken workflow is verified on the local integration candidate;
+see `docs/goldie-stage1.md` for evidence, recovery behavior and the shared-main gate.
 
 ## Run and verify
 
@@ -135,8 +135,10 @@ Use returned IDs and variable-length phase arrays.
    restores the original clip/position. Explain more uses this pause/save/add-on/
    resume pattern through `/api/teach` rather than `/api/ask`.
 
-8. Only when the **lesson clip**, not a question/add-on, ends in learning state,
-   send `phase_completed`. Skip/Already know stop audio and invalidate late callbacks
+8. When the **lesson clip**, not a question/add-on, ends in learning state,
+   send `phase_completed`. The explicit Mark read control may also send it after
+   resuming a paused session: this records coverage, not proof of hearing or mastery.
+   Skip/Already know stop audio and invalidate late callbacks
    before sending the action. These advance but preserve paused/asking status;
    resume explicitly if needed. Completion callbacks while paused/asking return 409.
 
@@ -154,7 +156,9 @@ Use returned IDs and variable-length phase arrays.
 
 ## Recovery, errors and limits
 
-- IDE persists session ID; `GET /api/sessions/:sessionId` restores saved state.
+- IDE persists pending offer ID/revision before acceptance, then the returned
+  session ID/revision. Interrupted acceptance is recovered by idempotently replaying
+  that accepted offer; confirmed sessions use `GET /api/sessions/:sessionId`.
   Never autoplay from restoration, even if returned status is learning.
 - Prepared questions normalize case, apostrophes, punctuation and whitespace.
   Topics: APIs, direct DB access, authentication, request flow, backend, UI state,
@@ -165,6 +169,9 @@ Use returned IDs and variable-length phase arrays.
   not returned. Speech failure leaves text and lesson progress intact.
 - No automatic synthesis retries. Offer manual retry when retryable; auth/config
   failures need backend correction. Corrupt cache fails instead of spending credits.
+  Node/RPC forwards only allowlisted API codes and fixed safe messages using Theia
+  application errors (`-32001` nonretryable, `-32002` retryable); raw error bodies,
+  provider messages and filesystem paths never reach the renderer.
 - Limits: 64 KiB HTTP body; 1000-character question; 32000-character handoff;
   4000-character speech; 2 MiB audio; four concurrent speech jobs. Each session
   allows 100 questions/500 unique actions; history allows 1000 offers/sessions.
@@ -178,10 +185,11 @@ Use returned IDs and variable-length phase arrays.
 
 Backend tests cover real local HTTP and persistence using controlled provider
 responses. The real-speech smoke separately verifies ElevenLabs and native MP3
-playback. After Rishit's UI is integrated, verify in Theia Electron: decline
+playback. The integrated local native run verifies in Theia Electron: decline
 without audio, Explain, roadmap, spoken lesson, pause, skip/already know, typed
 question, spoken answer, resume at saved position, and recap. Only the merged
-native run closes the PRD's Stage 1 gate.
+native main-checkout run closes the PRD's shared Stage 1 gate; publishing/merging
+the verified local candidate is a separate approval, not implied by this milestone.
 
 ### Backend verification — October 10, 2026
 
@@ -197,5 +205,6 @@ native run closes the PRD's Stage 1 gate.
   Generated audio and smoke session state stay local and ignored by Git.
 - Independent read-only review found one storage error-classification gap, fixed
   with a failing-then-passing read-only-cache regression test. No remaining findings.
-- No frontend changes, packaged Electron UI suite, live Gemini/Codex integration,
-  deployment, push or merge are included in this backend milestone.
+- That backend-only milestone preceded the frontend repair. Current integrated
+  evidence and packaged-suite limitations are recorded in `docs/goldie-stage1.md`.
+  No live Gemini/Codex integration or deployment is claimed.

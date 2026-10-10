@@ -1,5 +1,5 @@
 /* Goldie's lesson flow stays compact and native to the active Theia theme. */
-.goldie-widget { overflow: hidden; }
+.goldie-widget { overflow: hidden; container-type: inline-size; }
 
 .goldie-panel {
     display: flex;
@@ -266,6 +266,16 @@
     line-height: 1.4;
 }
 
+.goldie-player-detail { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.goldie-player progress { display: block; width: 100%; height: 5px; margin-top: 8px; accent-color: var(--theia-button-background); }
+.goldie-panel .goldie-note { line-height: 1.5; overflow-wrap: anywhere; }
+.goldie-supported-questions { margin-top: 18px; }
+.goldie-supported-questions ul { padding-left: 18px; }
+.goldie-supported-questions button {
+    border: 0; padding: 4px 0; background: transparent; color: var(--theia-textLink-foreground);
+    font: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; cursor: pointer;
+}
+
 .goldie-audio-error {
     margin: 0 0 12px;
     color: var(--theia-descriptionForeground);
@@ -405,12 +415,15 @@
 .goldie-panel button:focus-visible,
 .goldie-panel textarea:focus-visible { outline: 1px solid var(--theia-focusBorder); outline-offset: 2px; }
 
-@media (max-width: 360px) {
+@container (max-width: 360px) {
     .goldie-panel-body { padding-right: 14px; padding-left: 14px; }
     .goldie-actions,
     .goldie-form-actions,
     .goldie-question-actions { flex-direction: column; }
     .goldie-phase-actions { align-items: flex-start; flex-direction: column; gap: 4px; }
+    .goldie-phase-meta { flex-wrap: wrap; }
+    .goldie-panel .goldie-view h2 { font-size: 18px; }
+    .goldie-recap-list > div { flex-wrap: wrap; gap: 5px 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

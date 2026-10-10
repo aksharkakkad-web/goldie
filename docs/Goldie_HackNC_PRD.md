@@ -263,15 +263,15 @@ Keep the reference content in one place (e.g. `backend/reference/lesson.json`) a
 **Stage gates are cumulative**: finishing Stage 2 must not break the Stage 1 complete voice experience; connecting live Codex must not break Gemini teaching or audio. Prepared content is acceptable for *internal development gates*, not as evidence of adaptive intelligence in judging.
 
 - [x] **Stage 0:** IDE panel talks to backend; ElevenLabs credentials pass a genuine connectivity test. Verified October 10, 2026; see `docs/goldie-panel.md` for the repeatable workflow.
-- [ ] **Stage 1:** Prepared opt-in → roadmap → lesson → skip/already-know → typed prepared question → recap works, with **real ElevenLabs speech** at the lesson and answer steps.
+- [ ] **Stage 1:** Prepared opt-in → roadmap → lesson → skip/already-know → typed prepared question → recap works, with **real ElevenLabs speech** at the lesson and answer steps. Local integrated native gate verified October 10, 2026; shared-main merge and together-run checkpoint (§9.6) await approval.
 - [ ] **Stage 2:** With the same UI, Gemini (not a prepared file) chooses phases and generates spoken teaching; changes to handoff/profile change the output appropriately.
 - [ ] **Stage 3:** An unseen typed question receives a real context-aware Gemini answer. Push-to-talk + transcription is added if reliable.
 - [ ] **Stage 4:** Codex actually creates and updates the cumulative handoff during a coding task; that context drives a Gemini lesson and ElevenLabs speech.
 - [ ] **Stage 5:** Implementation questions cite real locally retrieved paths and excerpts, or say implementation is unverified.
 - [ ] **Stage 6:** Two new prompts during an active lesson do not interrupt it; catch-up afterward considers both prompts together.
 - [ ] **Stage 7:** A styling task, a narrow engineering task and a large PRD in an unfamiliar project work without manual fixture swaps.
-- [ ] “Not now” dismisses the popup and never starts audio.
-- [ ] Pause/resume, skip, already know and end are all functional; an unplayed lesson is not marked mastered.
+- [x] “Not now” dismisses the popup and never starts audio.
+- [x] Pause/resume, skip, already know and end are all functional; an unplayed lesson is not marked mastered.
 - [ ] The number and order of phases depend on the actual engineering scope and knowledge profile once Gemini is live.
 - [ ] Large PRDs begin with architecture-first foundations; narrower tasks focus on current implementation; trivial tasks normally remain silent.
 - [ ] Spoken teaching is conceptual, not a file-by-file status narration.
@@ -283,7 +283,17 @@ Keep the reference content in one place (e.g. `backend/reference/lesson.json`) a
 - [ ] README credits Codex, Gemini, ElevenLabs and open-source IDE dependencies and identifies hackathon-original code.
 - [ ] Two truthful, real-service two-minute demos pass without manually swapping reference data.
 
-**Stage 1 backend milestone — October 10, 2026:** Akshar's prepared web-app architecture APIs, persistent session/progress state, Q&A, recap, and real ElevenLabs generation/playback are verified; see `docs/stage1-api.md`. The full Stage 1 checkbox deliberately remains open until Rishit's lesson UI and transport are integrated and the complete workflow passes in native Theia Electron.
+**Stage 1 integrated local milestone — October 10, 2026:** Akshar's backend and
+Rishit's native Theia lesson UI now agree on architecture content, session retrieval,
+server progress/actions, content-ID speech and truthful recap. The full local native
+journey passes with actual ElevenLabs lesson/answer MP3 playback, pause/resume,
+Explain more, unsupported-question limits, skip/familiarity, restart restoration,
+early end and backend/speech failures. Interrupted acceptance and safe RPC error
+semantics have regression coverage and independent re-review. See `docs/goldie-stage1.md`
+for evidence and the separate upstream packaged-test limitation, and `docs/stage1-api.md`
+for contracts. This is the technical Stage 2 baseline; the shared Stage 1 checkbox
+remains open only for approved delivery to main and the together-run checkpoint
+in §9.6. Gemini/live Codex behavior has not been implemented or claimed.
 
 ## 11. Final two-minute judging demonstration (all claimed functionality live)
 

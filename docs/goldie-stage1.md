@@ -1,43 +1,117 @@
-# Rishit's Stage 1 — IDE lesson flow
+# Connected Stage 1 — native Theia lesson
 
-Implemented on `codex/rishit-stage-1`, based on Akshar's merged Stage 0 (`fe45be6`).
+Akshar's prepared backend and Rishit's native Theia UI share the same session,
+progress and content-ID speech contracts. The lesson explains frontend, backend/API
+and database through creating a team. These are logical responsibilities: Next.js
+can contain frontend and server code. This is conceptual teaching, not workspace
+inspection or a generated application. Gemini is not used yet.
 
-The right panel accepts backend offers, starts real session IDs, displays a variable roadmap and phase explanations, plays binary speech, supports pause/resume, skip, self-reported familiarity, typed questions, and a backend recap. Questions retain the original lesson audio element and playback position. Only completed playback is recorded as heard; skipped, familiar, and pending stay distinct. Closing releases audio and ignores late responses. Failed requests can be retried; speech failure leaves text usable.
+## Run the product
 
-## Backend integration handoff
+Use Node 24.21.0 and Yarn Classic 1.22.22 from this checkout:
 
-Akshar owns prepared responses and ElevenLabs generation. The IDE uses the existing `@goldie/contracts` payloads with these local POST routes:
+```sh
+yarn backend:build
+yarn workspace theia-ide-product-ext build
+yarn electron build
+yarn backend:start
+```
 
-| Route | Contract |
-| --- | --- |
-| `/api/offer` | OfferRequest → OfferResponse |
-| `/api/sessions` | SessionRequest → SessionResponse |
-| `/api/teach` | TeachRequest → TeachResponse |
-| `/api/ask` | AskRequest → AskResponse |
-| `/api/complete` | CompleteRequest → CompleteResponse |
-| `/api/speech` | SpeechRequest → raw audio bytes with explicit audio Content-Type |
+In another terminal, `yarn electron start .`. For iteration, keep `yarn electron
+watch` running; restart Electron after transport/backend-module changes. See
+`DEV_SETUP.md` for toolchain/reload troubleshooting. Configure speech only in
+ignored `backend/.env`; never renderer preferences. One backend owns each JSON
+data directory. Open **Goldie: Open Panel** from the command palette if needed.
+Prepare lesson → Explain this build → roadmap/spoken lesson. Not now creates no
+session/audio. The reference selector is internal, not a live Codex handoff.
 
-JSON responses need `application/json`. Speech supports MP3, WAV, Ogg, MP4, or WebM. The IDE requests speech separately for explanation/answer text; optional teach audioUrl is not fetched. Requests have bounded sizes and deadlines and do not follow redirects. Provider keys stay in the backend.
+## Connected behavior and ownership
 
-The current context is explicitly the prepared Next.js authentication example, project `goldie-reference`, revision 1, beginner profile. It does not inspect the user's workspace or claim a live Codex handoff. Source retrieval and microphone input are later stages.
+- `theia-extensions/product/src/common/goldie-service.ts` and `src/node/goldie-api.ts`
+  bind strict `@goldie/contracts` through local Node/RPC. Exact payloads are in
+  `docs/stage1-api.md`. No backend schema redesign was needed.
+- Text arrives first. Speech POST uses `{sessionId,contentId}`, then Node retrieves
+  the validated audio ID through a locally constructed path. Only MP3 is accepted,
+  bounded to 2 MiB with whole-body deadlines; redirects/arbitrary URLs are rejected.
+  The renderer creates local Blob URLs and revokes them on release. No file-origin
+  CORS bypass or provider key reaches the renderer.
+- Server roadmap, active phase, status and progress are authoritative. Action IDs
+  survive manual action retries. Fetching text never completes a phase. Covered,
+  skipped and self-reported familiarity remain separate; none proves mastery.
+- Questions/Explain more pause the lesson, speak a separate answer/add-on, then
+  Resume returns to the original element/time. Unknown questions honestly disclose
+  the prepared-content limit and suggest supported questions without changing phase.
+- Lesson-ended saves completion and advances. Mark read explicitly records text
+  coverage, not proof of hearing. Skip/Already know stop playback and advance. End
+  invalidates media, waits for pending mutations and displays a server partial recap.
+- Pending accepted offer ID/revision is saved before session creation. Lost responses
+  or disposal recover by idempotent acceptance. Confirmed session ID/revision uses
+  GET session. Restore never teaches, synthesizes or autoplays. Clip position is
+  retained during interruptions, not across closing/restarting the panel.
+- Failures retain text/controls. Retry last request reuses failed action intent;
+  safe configuration/auth failures instead explain backend correction. Explicit Play
+  remains available after correction. No automatic paid retry or purchase occurs.
+- Find another lesson after closure advances only the illustrative reference revision,
+  not a live engineering checkpoint. Theia is the sole product host.
 
-## Run and iterate
+## Verification — October 10, 2026
 
-Use the Node/Yarn PATH in `DEV_SETUP.md`. Keep `yarn backend:start`, `yarn electron watch`, and `yarn electron start .` running in separate terminals. On this Mac those processes use tmux session `goldie`. After TypeScript and browser bundling report zero errors, try Cmd-R in Electron. This Mac can stall during upstream plugin startup after reload: quit Electron and run the start command again while watch continues. Restarting was verified to load the new panel code. Backend service/binding changes require quitting/restarting Electron. Do not reinstall dependencies for routine panel edits.
+Passing automated commands: `yarn test:stage1` (129 checks: 38 backend, 10 shared
+contracts, 80 product and one Stage 0 real health integration), `yarn lint` (seven
+targets), product TypeScript and `yarn electron build`. Tests include a real Fastify/Node
+transport journey, persistence/restart, duplicate actions, prepared Q&A, speech cache
+and recap, plus lost acceptance/action responses, media cancellation, safe RPC errors,
+strict payloads, deadlines and bounds. Automated providers are controlled local
+servers, not evidence of ElevenLabs playback.
 
-Main files:
-- `theia-extensions/product/src/browser/goldie/goldie-widget.tsx`: controls and views.
-- `theia-extensions/product/src/browser/goldie/goldie-lesson.css`: native theme styling; imported from source because tsc does not copy CSS.
-- `theia-extensions/product/src/browser/goldie/goldie-lesson-controller.ts`: navigation, request sequencing, truthful status.
-- `theia-extensions/product/src/browser/goldie/goldie-audio-player.ts`: separate lesson/answer players and cleanup.
-- `theia-extensions/product/src/node/goldie-api.ts`: local HTTP transport; service interface in `src/common/goldie-service.ts`.
+Native acceptance uses actual Theia Electron, real Fastify, isolated Electron/Theia
+profiles and JSON storage, actual ElevenLabs MP3s and existing credits/cache. No
+alternate IDE/browser-hosted product, fake media element, synthetic ended event or
+quiet tone is used for this gate. Verified:
 
-## Verification and remaining gate
+- connected/offline/recovered backend; decline with no session/playback;
+- three-topic offer, accepted roadmap and real spoken lesson;
+- pause/resume, spoken prepared answer and Explain more, original clip/time resume;
+- honest unsupported question and supported suggestions;
+- close/reopen and full native app restart restoring without autoplay;
+- real media-ended completion/advance (QA seeks near the end rather than claiming
+  a human listened to every second);
+- separate completed/skipped/familiar progress in the server recap;
+- uncached speech failure leaves usable answer text/lesson controls;
+- early end yields partial recap without invented completion.
 
-Locally passed Stage 0 suite: 11 backend tests, 4 shared-contract tests, 50 product tests, and real backend health/offline integration. Product TypeScript, ESLint, Electron development build, and watch compile/bundle passed. Native Electron verified Connected against the real Stage 0 backend and an honest error for missing Stage 1 routes. The key smoke check reports `ELEVENLABS_API_KEY is required` on this Mac; teammate's credential verification cannot be independently repeated here yet.
+Final native run: 16 checks passed, zero renderer errors. Default panel was 292 CSS
+pixels; actual Theia splitter drags to 500 and 260 pixels kept the recap readable
+without horizontal overflow. Screenshots were visually inspected.
 
-Client-only native QA uses `node scripts/goldie-stage1/fixture-server.cjs` on 127.0.0.1:8788 and launches Electron with `GOLDIE_BACKEND_URL=http://127.0.0.1:8788`. This is an explicit test server, never backend:start or a judged demo. It returns prepared responses and a quiet playback tone, not ElevenLabs speech. `--fail-teach-once --fail-speech-once` exercises recovery. Keep it separate from the real backend on 8787.
+Full-run local evidence: `/tmp/goldie-stage1-verified.O6SJKd/result.json` and its
+initial/question/recap/layout screenshots. These temporary diagnostic artifacts may not
+survive cleanup; this guide and committed regressions are the durable record.
+Generated audio, session stores and credentials remain ignored by Git.
 
-Native QA verified decline with no session/speech requests, acceptance, actual browser playback state, pause, typed question/answer, original phase resume without refetching lesson/speech, skip, familiarity, next/finish, and a truthful recap. Real project file editing/saving and terminal commands still function; watch-built panel changes load after restart; Cmd-R stalled during upstream plugin startup on this Mac, so explicit restart is the verified fallback. Screenshot evidence is captured locally. A dedicated narrower panel drag could not be exercised because native automation rejected drag; normal desktop layout was visually inspected.
+The broad upstream `yarn test` is **not green**: Electron/Electron-next suites
+expect packaged macOS binaries and fail in launch hooks (`chrome-launcher` undefined
+`.toString()`, then undefined `closeWindow`). Packaging, e.g. `yarn electron
+package:preview`, is their prerequisite per repository instructions. No installer
+or packaged distribution was built here. This is separate from the passing native
+development-app acceptance; do not describe all repository tests as passing.
 
-Full Stage 1 remains pending Akshar's six endpoints and real ElevenLabs lesson/answer speech. Frontend completion and test audio are not evidence that the integrated real-speech gate passed.
+## Diagnostic fixture — not real-voice evidence
+
+`node scripts/goldie-stage1/fixture-server.cjs` starts the actual lesson backend on
+127.0.0.1:8788 with fresh temporary storage, without loading `.env` or provider keys.
+Use a separate Electron instance with `GOLDIE_BACKEND_URL=http://127.0.0.1:8788`.
+Default speech intentionally fails while text works. Optional
+`--audio=/absolute/path/test.mp3` replays that bounded local MP3 for every response
+through a local provider; it is not ElevenLabs or a judged demo.
+`--fail-teach-once --fail-speech-once` exercises recovery. The temporary store is
+printed and preserved; stop the fixture with Ctrl-C.
+
+## Stage 2 boundary
+
+The connected prepared experience is the technical Stage 2 baseline. First deliver
+the approved candidate to shared main and repeat the native gate together, as PRD
+§9.6 requires. This work performs no push, PR, external merge, deployment, Gemini
+implementation, microphone input, hosted database or dependency change. Stage 2
+replaces prepared lesson decisions/text with Gemini while preserving these controls,
+server progress, speech safeguards and cumulative checks.
