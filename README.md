@@ -1,6 +1,6 @@
 # Goldie
 
-HackNC engineering mentor built on Eclipse Theia IDE. The integrated Stage 1 experience teaches prepared web-app architecture through a roadmap, real ElevenLabs speech, pause/resume, typed questions, saved progress and truthful recaps. It runs in native Theia Electron, not Cursor or VS Code. Gemini-generated teaching and live Codex handoffs come later.
+HackNC engineering mentor built on Eclipse Theia IDE. Goldie teaches architecture through opt-in roadmaps, Gemini-generated lessons, real ElevenLabs speech, pause/resume, typed prepared FAQs, saved progress and truthful recaps. Stage 2 uses an explicitly loaded Markdown handoff and beginner/intermediate profile; live Codex handoffs and freeform Q&A come later. It runs in native Theia Electron, not Cursor or VS Code. The integrated local candidate still requires the joint merged-main checkpoint before overall Stage 2 sign-off.
 
 ## Start development
 
@@ -21,7 +21,7 @@ Then run `yarn electron watch` in one terminal and `yarn electron start .` in an
 
 ```sh
 cp backend/.env.example backend/.env
-# Add ELEVENLABS_API_KEY to backend/.env; never commit this file.
+# Add GEMINI_API_KEY and ELEVENLABS_API_KEY to backend/.env; never commit this file.
 yarn backend:build
 yarn backend:test
 yarn backend:start
@@ -40,6 +40,15 @@ opt-in `yarn backend:smoke:speech --play` generates and plays a real lesson and
 answer using existing credits (or cached audio); stop the normal backend first.
 See [Stage 1 API contracts](docs/stage1-api.md) and the
 [connected desktop workflow and verification evidence](docs/goldie-stage1.md).
+
+For Stage 2, use **Load handoff** to choose one file from `docs/stage2-samples/`,
+select Beginner/Intermediate, then **Prepare lesson → Explain this build**.
+Loading alone never starts generation or audio. Add keys to the existing `.env`
+without overwriting it. Run `yarn test:stage2` for cumulative provider-mocked checks.
+The explicit `yarn backend:smoke:gemini --play` uses real Gemini and existing
+ElevenLabs credits; it never runs automatically. See
+[Stage 2 contracts, privacy and recovery](docs/stage2-api.md) and
+[integrated verification and remaining gates](docs/stage2-alignment-verification.md).
 
 - [Development setup and troubleshooting](DEV_SETUP.md)
 - [Updated Goldie PRD and responsibilities](docs/Goldie_HackNC_PRD.md)

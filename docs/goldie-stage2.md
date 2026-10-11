@@ -1,5 +1,12 @@
 # Rishit's Stage 2 IDE milestone
 
+**Historical IDE-only evidence.** Both tracks are now combined locally; use
+[the authoritative integrated contract](stage2-api.md) and
+[current verification](stage2-alignment-verification.md). The older 25-second
+deadline and rejection recovery described below have been superseded by 30-second
+offer/teach, 15-second acceptance and automatic idle recovery after definitive
+rejections. Screenshots below remain controlled teaching/test-tone evidence only.
+
 Verified locally on October 10, 2026, based on `main` commit `5a1a42b`.
 This milestone covers Rishit's IDE changes and verification. Backend implementation
 and live-service sign-off are separate.

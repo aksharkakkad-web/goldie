@@ -18,6 +18,15 @@ describe('backend configuration', () => {
         expect(config.allowedOrigin).to.equal('http://127.0.0.1:3000');
     });
 
+    it('configures Gemini server-side with a bounded synthesis deadline', () => {
+        expect(loadConfig({})).to.include({ geminiModel: 'gemini-3.5-flash-lite', geminiTimeoutMs: 20000 });
+        expect(loadConfig({ GEMINI_API_KEY: '  local-secret  ', GEMINI_MODEL: 'gemini-custom' }))
+            .to.include({ geminiApiKey: 'local-secret', geminiModel: 'gemini-custom' });
+        expect(loadConfig({ GEMINI_API_KEY: '  ' })).to.have.property('geminiApiKey', undefined);
+        expect(() => loadConfig({ GEMINI_MODEL: '../invalid' })).to.throw();
+        expect(() => loadConfig({ GOLDIE_GEMINI_TIMEOUT_MS: '20001' })).to.throw();
+    });
+
     it('rejects an invalid port', () => {
         expect(() => loadConfig({ GOLDIE_BACKEND_PORT: 'not-a-port' }))
             .to.throw('GOLDIE_BACKEND_PORT must be an integer between 1 and 65535');

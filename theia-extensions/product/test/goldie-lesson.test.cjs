@@ -399,21 +399,21 @@ test('no loaded handoff cannot call live endpoints; confirmed legacy session sti
     assert.equal(fixture.calls.teach.length, 0); assert.equal(fixture.calls.speech.length, 0); restored.dispose();
 });
 
-for (const apiCode of ['CONTEXT_CONFLICT', 'REVISION_CONFLICT', 'OFFER_NOT_FOUND']) {
-    test(`confirmed ${apiCode} archives acceptance and permits new context after declining`, async () => {
+for (const apiCode of ['CONTEXT_CONFLICT', 'REVISION_CONFLICT', 'OFFER_NOT_FOUND', 'ACTIVE_SESSION', 'REVISION_ALREADY_ACCEPTED', 'NO_LESSON_OFFER']) {
+    test(`confirmed ${apiCode} archives acceptance and returns an idle usable panel`, async () => {
         const { controller, service, calls, storage } = setup(); const original = controller.state.context;
         service.startSession = async request => {
             calls.start.push(clone(request));
             throw Object.assign(new Error('This offer cannot be accepted.'), { code: -32001, data: { apiCode } });
         };
         await start(controller);
-        assert.equal(controller.state.view, 'offer'); assert.equal(controller.state.error, 'This offer cannot be accepted.');
-        assert.equal(controller.state.retryable, false); assert.equal(controller.canChangeContext, false);
+        assert.equal(controller.state.view, 'idle'); assert.equal(controller.state.error, 'This offer cannot be accepted.');
+        assert.equal(controller.state.offer, undefined);
+        assert.equal(controller.state.retryable, false); assert.equal(controller.canChangeContext, true);
         assert.equal(storage.getItem('goldie.lesson-recovery.v2'), 'null');
         assert.deepEqual(JSON.parse(storage.getItem('goldie.rejected-acceptance.v2')), [
             { version: 2, offerId: 'o1', revision: 1, context: original, apiCode }
         ]);
-        controller.declineOffer(); assert.equal(controller.canChangeContext, true);
         controller.setContext('Build an event-driven API', 'intermediate', 'Event API'); await controller.checkOffer();
         assert.equal(calls.offer.length, 2); assert.equal(calls.offer[1].revision, 2); assert.equal(calls.offer[1].handoff, 'Build an event-driven API');
         assert.equal(calls.get.length, 0); assert.equal(calls.start.length, 1); controller.dispose();
@@ -433,6 +433,19 @@ for (const failure of [new Error('Network response lost'), { code: -32001, data:
         assert.equal(calls.offer.length, 1); assert.equal(calls.teach.length, 0); assert.equal(calls.speech.length, 0); restored.dispose();
     });
 }
+
+test('same-window retry after a lost acceptance response restores the exact session without autoplay', async () => {
+    const { controller, service, calls } = setup(); const accept = service.startSession; let lose = true;
+    service.startSession = async request => { const response = await accept(request);
+        if (lose) { lose = false; throw new Error('Accepted response lost'); } return response; };
+    await start(controller); assert.equal(controller.state.session, undefined);
+    await controller.retry();
+    assert.deepEqual(calls.start[1], calls.start[0]);
+    assert.equal(controller.state.session.sessionId, 's1'); assert.equal(controller.state.restored, true);
+    assert.equal(controller.state.audioState, 'paused');
+    assert.equal(calls.teach.length, 0); assert.equal(calls.speech.length, 0);
+    controller.dispose();
+});
 test('failed rejection archive preserves pending acceptance for safe recovery', async () => {
     const { controller, service, storage } = setup(); const write = storage.setItem;
     storage.setItem = (key, value) => { if (key === 'goldie.rejected-acceptance.v2') { throw new Error('Disk full'); } write(key, value); };
@@ -441,3 +454,38 @@ test('failed rejection archive preserves pending acceptance for safe recovery', 
     assert.equal(JSON.parse(storage.getItem('goldie.lesson-recovery.v2')).offerId, 'o1');
     controller.declineOffer(); assert.equal(controller.canChangeContext, false); controller.dispose();
 });
+
+test('failed rejection tombstone preserves exact acceptance and permits a safe archival retry', async () => {
+    const { controller, service, storage } = setup(); const write = storage.setItem;
+    storage.setItem = (key, value) => { if (key === 'goldie.lesson-recovery.v2' && value === 'null') { throw new Error('Disk full'); } write(key, value); };
+    service.startSession = async () => { throw Object.assign(new Error('Offer rejected'), { code: -32001, data: { apiCode: 'ACTIVE_SESSION' } }); };
+    await start(controller);
+    assert.match(controller.state.error, /recovery data is preserved/);
+    const pending = storage.getItem('goldie.lesson-recovery.v2');
+    assert.equal(JSON.parse(pending).offerId, 'o1');
+    assert.equal(controller.canChangeContext, false);
+    storage.setItem = write; await controller.retry();
+    assert.equal(storage.getItem('goldie.lesson-recovery.v2'), 'null');
+    assert.equal(controller.state.view, 'idle'); assert.equal(controller.canChangeContext, true);
+    assert.equal(JSON.parse(storage.getItem('goldie.rejected-acceptance.v2')).length, 1);
+    controller.dispose();
+});
+
+for (const newer of ['acceptance', 'session', 'same-offer-different-context', 'corrupt']) {
+    test(`rejected acceptance never retires a newer ${newer} recovery record from another window`, async () => {
+        const { controller, service, storage } = setup(); const gate = deferred();
+        service.startSession = async () => { await gate.promise;
+            throw Object.assign(new Error('Offer rejected'), { code: -32001, data: { apiCode: 'CONTEXT_CONFLICT' } }); };
+        await controller.checkOffer(); const accepting = controller.acceptOffer();
+        const original = JSON.parse(storage.getItem('goldie.lesson-recovery.v2'));
+        const replacement = newer === 'corrupt' ? '{preserve-this-data' : JSON.stringify(newer === 'session'
+            ? { version: 2, sessionId: 'other-session', revision: 2, context: { ...original.context, revision: 2 } }
+            : { ...original, offerId: newer === 'acceptance' ? 'other-offer' : original.offerId,
+                context: { ...original.context, handoff: 'Newer context from the other window.' } });
+        storage.setItem('goldie.lesson-recovery.v2', replacement); gate.resolve(); await accepting;
+        assert.equal(storage.getItem('goldie.lesson-recovery.v2'), replacement);
+        assert.equal(JSON.parse(storage.getItem('goldie.rejected-acceptance.v2'))[0].offerId, 'o1');
+        assert.equal(controller.state.view, 'idle'); assert.equal(controller.canChangeContext, true);
+        controller.dispose();
+    });
+}
