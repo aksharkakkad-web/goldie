@@ -10,6 +10,95 @@ const { loadConfig } = require('../../../backend/lib/src/config');
 const { createGoldieApi } = require('../lib/node/goldie-api');
 const { GoldieLessonController } = require('../lib/browser/goldie/goldie-lesson-controller');
 
+test('two windows reject conflicting acceptance safely without disturbing the owning lesson', async () => {
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'goldie-two-windows-'));
+    const provider = { identity: 'controlled-two-windows-v1', async plan() {
+        return { shouldOffer: true, reason: 'Architecture teaching', estimatedSeconds: 60, phases: [{ id: 'boundary', title: 'Trust boundary',
+            objective: 'Understand trust boundaries', description: 'Conceptual teaching.', whyNow: 'Relevant architecture',
+            depth: 'working', sourceStatus: 'planned', prerequisiteIds: [] }] };
+    }, async teach() { return { explanation: 'Conceptual trust boundary.', groundingStatus: 'conceptual' }; } };
+    let app, owner, contender, restored;
+    const storage = () => { const values = new Map(); return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) }; };
+    const audio = () => ({ subscribe: () => () => {}, clear() {}, dispose() {}, pause() {}, load() { assert.fail('No configured speech'); },
+        select() {}, async play() { assert.fail('No configured speech'); } });
+    try {
+        app = await buildApp(loadConfig({ GOLDIE_DATA_DIR: dataDir }), provider);
+        const api = createGoldieApi(await app.listen({ host: '127.0.0.1', port: 0 }));
+        const contenderStorage = storage();
+        owner = new GoldieLessonController(api, audio(), storage()); contender = new GoldieLessonController(api, audio(), contenderStorage);
+        owner.setContext('Plan a team API with membership permissions.', 'beginner');
+        contender.setContext('Plan a team API with membership permissions.', 'intermediate');
+        await owner.checkOffer(); await contender.checkOffer();
+        const rejected = { version: 2, offerId: contender.state.offer.offerId, revision: 1, context: contender.state.context };
+        await owner.acceptOffer(); const ownerSession = await api.getSession(owner.state.session.sessionId);
+        await contender.acceptOffer();
+        assert.equal(contender.state.view, 'idle'); assert.equal(contender.canChangeContext, true);
+        assert.equal(contender.state.retryable, false); assert.match(contender.state.error, /owning window/i);
+        assert.deepEqual(await api.getSession(ownerSession.sessionId), ownerSession);
+        assert.equal(contenderStorage.getItem('goldie.lesson-recovery.v2'), 'null');
+        await owner.endSession();
+        // Replay the other window's stale offer after the owner closes the revision.
+        contenderStorage.setItem('goldie.lesson-recovery.v2', JSON.stringify(rejected));
+        restored = new GoldieLessonController(api, audio(), contenderStorage); await restored.restore();
+        assert.equal(restored.state.view, 'idle'); assert.equal(restored.canChangeContext, true);
+        assert.equal(restored.state.retryable, false); assert.match(restored.state.error, /already.*accepted/i);
+        assert.equal((await api.getSession(ownerSession.sessionId)).status, 'dismissed');
+        restored.setContext('Add runtime validation for team input.', 'beginner'); await restored.checkOffer();
+        assert.equal(restored.state.view, 'offer');
+        const saved = JSON.parse(await fs.readFile(path.join(dataDir, 'sessions.json'), 'utf8'));
+        assert.equal(saved.sessions.length, 1);
+    } finally {
+        owner?.dispose(); contender?.dispose(); restored?.dispose(); await app?.close();
+        await fs.rm(dataDir, { recursive: true, force: true });
+    }
+});
+
+for (const count of [7, 12]) {
+    test(`${count}-phase generated roadmap survives real transport, actions, backend restart and full recap`, async () => {
+        const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'goldie-large-roadmap-'));
+        const phases = Array.from({ length: count }, (_, i) => ({ id: `concept-${i + 1}`, title: `Concept ${i + 1}`,
+            objective: 'Understand one engineering responsibility', description: 'Controlled large-roadmap test data.',
+            whyNow: 'Required by the controlled test task', depth: 'working', sourceStatus: 'planned', prerequisiteIds: [] }));
+        const provider = { identity: 'controlled-large-roadmap-v1', async plan() {
+            return { shouldOffer: true, reason: 'Controlled engineering task', estimatedSeconds: count * 60, phases };
+        }, async teach() { return { explanation: 'Controlled conceptual teaching.', groundingStatus: 'conceptual' }; } };
+        const config = loadConfig({ GOLDIE_DATA_DIR: dataDir });
+        let app;
+        try {
+            app = await buildApp(config, provider);
+            let api = createGoldieApi(await app.listen({ host: '127.0.0.1', port: 0 }));
+            const offer = await api.offer({ projectId: 'large-task', revision: 1, handoff: 'Controlled larger architecture task.' });
+            assert.equal(offer.previewTopics.length, 3);
+            let session = await api.startSession({ offerId: offer.offerId, revision: 1 });
+            assert.equal(session.phases.length, count);
+            assert.equal((await api.startSession({ offerId: offer.offerId, revision: 1 })).sessionId, session.sessionId);
+            session = await api.action(session.sessionId, { actionId: 'completed-1', action: 'phase_completed', phaseId: 'concept-1' });
+            await app.close(); app = await buildApp(config, provider);
+            api = createGoldieApi(await app.listen({ host: '127.0.0.1', port: 0 }));
+            session = await api.getSession(session.sessionId);
+            assert.equal(session.phases.length, count);
+            assert.equal(session.activePhaseId, 'concept-2');
+            assert.deepEqual(session.completedIds, ['concept-1']);
+            session = await api.action(session.sessionId, { actionId: 'skip-2', action: 'skip', phaseId: 'concept-2' });
+            for (let i = 3; i <= count; i++) {
+                session = await api.action(session.sessionId, { actionId: `familiar-${i}`, action: 'already_know', phaseId: `concept-${i}` });
+            }
+            assert.equal(session.activePhaseId, undefined);
+            const recap = await api.complete({ sessionId: session.sessionId, status: 'completed', currentRevision: 1 });
+            assert.match(recap.recap, /Covered: Concept 1/);
+            assert.match(recap.recap, /Skipped: Concept 2/);
+            assert.match(recap.recap, /not demonstrated mastery/);
+            assert.match(recap.recap, new RegExp(`Concept ${count}`));
+            session = await api.getSession(session.sessionId);
+            assert.equal(session.status, 'completed');
+            assert.equal(session.alreadyKnowIds.length, count - 2);
+        } finally {
+            await app?.close();
+            await fs.rm(dataDir, { recursive: true, force: true });
+        }
+    });
+}
+
 for (const lost of [false, true]) {
     test(`interrupted acceptance recovers through real HTTP without autoplay (${lost ? 'lost response' : 'disposed before response'})`, { timeout: 15000 }, async () => {
         const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'goldie-acceptance-'));

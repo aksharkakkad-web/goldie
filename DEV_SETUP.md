@@ -58,7 +58,8 @@ Create its ignored environment file once:
 cp backend/.env.example backend/.env
 ```
 
-Add `ELEVENLABS_API_KEY` to `backend/.env`, then build, test and start the service:
+Add `GEMINI_API_KEY` and `ELEVENLABS_API_KEY` to `backend/.env`, preserving existing
+values if the file already exists, then build, test and start the service:
 
 ```sh
 yarn backend:build
@@ -85,7 +86,8 @@ The panel can be closed and reopened through **Goldie: Open Panel** in the comma
 
 Build with `yarn backend:build`, `yarn workspace theia-ide-product-ext build`,
 and `yarn electron build`, then run the backend and native Electron application as
-above. Use Prepare lesson → Explain this build in the Goldie panel. The reference
+above. The explicit reference API selector is `webapp-architecture`; the Stage 2
+desktop uses supplied handoff context instead. The reference
 lesson covers frontend, backend/API and database through creating a team; it does
 not inspect workspace files or generate an application.
 
@@ -100,7 +102,7 @@ Run `yarn test:stage1` and `yarn lint` before handoff. These do not spend credit
 Native playback and failure evidence, diagnostic fixture limits, and the separate
 packaged-Electron test prerequisite are in [the Stage 1 guide](docs/goldie-stage1.md).
 
-## Rishit's Stage 2 IDE track
+## Integrated Stage 2
 
 Open the Goldie panel and choose **Load handoff** or run **Goldie: Load sample handoff**
 from the command palette. Select one Markdown file from `docs/stage2-samples/`, then
@@ -117,13 +119,21 @@ Goldie uses Theia's in-app file picker because the native Mac picker blocked val
 Markdown selections during verification. In the picker, the pencil icon switches
 to path input. Enter a sample file path, select the file and choose Open.
 
-Akshar owns the Gemini backend separately. Until his Stage 2 backend is integrated,
-the supplied handoff does not produce live Gemini lessons in this checkout. Current
-client expectations are in `docs/stage2-api.md`; test provenance and screenshots
-are in `docs/goldie-stage2.md`. Never treat controlled client QA responses as live AI.
+Both tracks are integrated locally. Add Gemini credentials only to the existing
+ignored backend `.env`. The approved primary is `gemini-3.5-flash-lite`, with a
+20-second provider deadline and no automatic retry or fallback. Offer/teach
+transport permits 30 seconds; ordinary acceptance retains 15 seconds. The IDE
+does not send a reference selector, and generated roadmaps have no fixed phase cap.
 
-This run's normal desktop log is `/tmp/goldie-stage2-ready.log`; the existing watcher
-log is `/tmp/goldie-panel-watch.log`. The temporary QA service is stopped.
+If acceptance conflicts with a lesson in another window, finish it in its owning
+window. Definite rejections archive/release pending recovery and unlock context;
+uncertain network failures preserve the exact pending intent. Restore never autoplays.
+Run `yarn test:stage2`, `yarn lint` and `yarn electron build` before handoff; those
+do not spend credits. `yarn backend:smoke:gemini --play` is an explicitly invoked
+real-provider check using existing credits. Contracts/privacy are in
+`docs/stage2-api.md`; current evidence and the separate joint merged-main gate are
+in `docs/stage2-alignment-verification.md`. `docs/goldie-stage2.md` records the
+earlier Rishit-only controlled milestone, not live AI evidence.
 
 ## Persistent terminals
 
@@ -206,6 +216,9 @@ The reviewed product specification is saved at `docs/Goldie_HackNC_PRD.md`.
 Stage 0 implements the Goldie connection panel, teaching backend, shared API contracts,
 and real ElevenLabs credential validation. The integrated Stage 1 desktop adds prepared
 web-app architecture lessons, local persistent session/progress state, Q&A, recap and
-real ElevenLabs playback/cache. Gemini, onboarding and live handoffs remain future work.
+real ElevenLabs playback/cache. The local Stage 2 candidate adds Gemini-driven
+roadmaps/teaching and explicit handoff/profile loading. Onboarding, conversational
+Gemini Q&A and live Codex handoffs remain future work.
 See `docs/stage1-api.md` for exact contracts and `docs/goldie-stage1.md` for the native
-workflow and verified integration status. Shared-main delivery still requires approval.
+workflow and verified integration status. Stage 1 was merged in PR #2; Stage 2
+delivery still requires approval and the human together-run checkpoint remains open.

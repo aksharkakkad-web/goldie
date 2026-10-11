@@ -10,10 +10,17 @@
 import { expect } from 'chai';
 import { buildApp } from '../src/app';
 import { loadConfig } from '../src/config';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('GET /health', () => {
+    let directory: string;
+    beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), 'goldie-health-')); });
+    afterEach(async () => { await rm(directory, { recursive: true, force: true }); });
+
     it('returns the exact shared health contract', async () => {
-        const app = await buildApp(loadConfig({}));
+        const app = await buildApp(loadConfig({ GOLDIE_DATA_DIR: directory }));
         const response = await app.inject({ method: 'GET', url: '/health' });
         await app.close();
         expect(response.statusCode).to.equal(200);
@@ -22,6 +29,7 @@ describe('GET /health', () => {
 
     it('allows only the configured local origin', async () => {
         const app = await buildApp(loadConfig({
+            GOLDIE_DATA_DIR: directory,
             GOLDIE_ALLOWED_ORIGIN: 'http://127.0.0.1:3000'
         }));
         const allowed = await app.inject({

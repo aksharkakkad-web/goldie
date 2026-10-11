@@ -263,7 +263,7 @@ Keep the reference content in one place (e.g. `backend/reference/lesson.json`) a
 **Stage gates are cumulative**: finishing Stage 2 must not break the Stage 1 complete voice experience; connecting live Codex must not break Gemini teaching or audio. Prepared content is acceptable for *internal development gates*, not as evidence of adaptive intelligence in judging.
 
 - [x] **Stage 0:** IDE panel talks to backend; ElevenLabs credentials pass a genuine connectivity test. Verified October 10, 2026; see `docs/goldie-panel.md` for the repeatable workflow.
-- [ ] **Stage 1:** Prepared opt-in → roadmap → lesson → skip/already-know → typed prepared question → recap works, with **real ElevenLabs speech** at the lesson and answer steps. Local integrated native gate verified October 10, 2026; shared-main merge and together-run checkpoint (§9.6) await approval.
+- [ ] **Stage 1:** Prepared opt-in → roadmap → lesson → skip/already-know → typed prepared question → recap works, with **real ElevenLabs speech** at the lesson and answer steps. Native gate verified and merged in PR #2; the human together-run checkpoint (§9.6) remains open.
 - [ ] **Stage 2:** With the same UI, Gemini (not a prepared file) chooses phases and generates spoken teaching; changes to handoff/profile change the output appropriately.
 - [ ] **Stage 3:** An unseen typed question receives a real context-aware Gemini answer. Push-to-talk + transcription is added if reliable.
 - [ ] **Stage 4:** Codex actually creates and updates the cumulative handoff during a coding task; that context drives a Gemini lesson and ElevenLabs speech.
@@ -292,8 +292,29 @@ early end and backend/speech failures. Interrupted acceptance and safe RPC error
 semantics have regression coverage and independent re-review. See `docs/goldie-stage1.md`
 for evidence and the separate upstream packaged-test limitation, and `docs/stage1-api.md`
 for contracts. This is the technical Stage 2 baseline; the shared Stage 1 checkbox
-remains open only for approved delivery to main and the together-run checkpoint
-in §9.6. Gemini/live Codex behavior has not been implemented or claimed.
+remains open only for the human together-run checkpoint in §9.6; delivery to main
+completed in PR #2. That milestone did not implement or claim Gemini/live Codex.
+
+**Stage 2 integrated local candidate — October 10, 2026:** Rishit's explicit
+Markdown handoff/profile UI and Akshar's server-only Gemini teaching backend now
+share one native Theia workflow. The approved primary is `gemini-3.5-flash-lite`.
+Offer evaluation generates an adaptive, uncapped roadmap; acceptance freezes it
+without another model call. Lazy standard/expanded explanations use content-ID
+ElevenLabs speech. Conceptual/inferred teaching is not observed repository evidence.
+Prepared general FAQ answers remain until Stage 3; there is no automatic fallback.
+Akshar approved bounded deliberately supplied private context, never credentials,
+`.env` or whole repositories. Definite acceptance rejections archive/release only
+matching recovery and return an idle usable panel; unknown/network failures keep
+the exact intent. Another window's active lesson is never automatically replaced.
+See `docs/stage2-api.md` for the authoritative contract and
+`docs/stage2-alignment-verification.md` for checks, provenance and limitations.
+The local technical gate passed 211 cumulative checks and 16 native checks with
+real beginner/intermediate Gemini roadmaps and ElevenLabs lessons, narrow/cosmetic
+adaptation, exact-clip question/add-on resume and restart without autoplay. Larger
+roadmap/failure scenarios use explicitly labeled controlled test data. Generated
+text still needs semantic review; passing integration is not a factual guarantee.
+The overall Stage 2 checkbox stays open for approved merged-main delivery and
+Akshar/Rishit's joint checkpoint (§9.6), not merely passing mocked tests.
 
 ## 11. Final two-minute judging demonstration (all claimed functionality live)
 

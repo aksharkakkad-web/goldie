@@ -20,6 +20,9 @@ export interface BackendConfig {
     elevenLabsVoiceId: string;
     elevenLabsModelId: string;
     speechTimeoutMs: number;
+    geminiApiKey?: string;
+    geminiModel: string;
+    geminiTimeoutMs: number;
 }
 
 function optionalTrimmed(value: string | undefined): string | undefined {
@@ -31,9 +34,9 @@ function stringValue(value: string | undefined, fallback: string): string {
     return optionalTrimmed(value) ?? fallback;
 }
 
-function providerIdentifier(value: string | undefined, fallback: string, name: string): string {
+function providerIdentifier(value: string | undefined, fallback: string, name: string, allowDots = false): string {
     const identifier = stringValue(value, fallback);
-    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(identifier)) {
+    if (!(allowDots ? /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/ : /^[a-zA-Z0-9_-]{1,128}$/).test(identifier)) {
         throw new Error(`${name} must be an alphanumeric provider identifier`);
     }
     return identifier;
@@ -67,6 +70,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
         allowedOrigin: stringValue(env.GOLDIE_ALLOWED_ORIGIN, 'http://127.0.0.1:3000'),
         elevenLabsApiKey: optionalTrimmed(env.ELEVENLABS_API_KEY),
         elevenLabsBaseUrl: stringValue(env.ELEVENLABS_BASE_URL, 'https://api.elevenlabs.io'),
+        geminiApiKey: optionalTrimmed(env.GEMINI_API_KEY),
+        geminiModel: providerIdentifier(env.GEMINI_MODEL, 'gemini-3.5-flash-lite', 'GEMINI_MODEL', true),
+        geminiTimeoutMs: integerValue(env.GOLDIE_GEMINI_TIMEOUT_MS, 20000, 'GOLDIE_GEMINI_TIMEOUT_MS', 1, 20000),
         dataDir: path.resolve(stringValue(env.GOLDIE_DATA_DIR, path.resolve(__dirname, '../../.data'))),
         elevenLabsVoiceId: providerIdentifier(env.ELEVENLABS_VOICE_ID, 'JBFqnCBsd6RMkjVDRZzb', 'ELEVENLABS_VOICE_ID'),
         elevenLabsModelId: providerIdentifier(env.ELEVENLABS_MODEL_ID, 'eleven_multilingual_v2', 'ELEVENLABS_MODEL_ID'),

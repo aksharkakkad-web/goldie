@@ -1,5 +1,9 @@
 # Stage 1 backend integration
 
+This guide describes the explicit prepared reference path. Stage 2 uses Gemini
+behind the same contracts when a nonempty handoff is supplied without the reference
+selector. See [Stage 2 integration](stage2-api.md) for context retention and recovery.
+
 Akshar's backend serves a prepared, conceptual web-app architecture lesson:
 frontend → backend/API → database, connected through creating a team. Next.js can
 host frontend and server responsibilities in one project. This is not a generated
@@ -66,7 +70,7 @@ Use returned IDs and variable-length phase arrays.
    ```
 
    Returns `{shouldOffer,previewTopics,offerId?,estimatedSeconds?}` (165 seconds
-   for this example). No selector, active session, or already-accepted revision
+   for this example). An empty handoff without a selector, active session, or already-accepted revision
    returns false. Repeated unaccepted requests reuse the offer. The IDE suppresses
    duplicate popups and remembers Not now; decline sends no session/speech call.
 

@@ -16,10 +16,13 @@ import { ApiError } from './errors';
 import { registerLessonRoutes } from './lesson-routes';
 import { LessonService } from './lessons';
 import { SpeechProviderError } from './providers/speech';
+import { GeminiTeachingProvider, TeachingProvider } from './providers/teaching';
 import { SpeechService } from './speech';
 
-export async function buildApp(config: BackendConfig): Promise<FastifyInstance> {
-    const lessons = await LessonService.open(config.dataDir);
+export async function buildApp(config: BackendConfig, teachingProvider: TeachingProvider = new GeminiTeachingProvider({
+    apiKey: config.geminiApiKey, model: config.geminiModel, timeoutMs: config.geminiTimeoutMs
+})): Promise<FastifyInstance> {
+    const lessons = await LessonService.open(config.dataDir, teachingProvider);
     const speech = new SpeechService(path.join(config.dataDir, 'audio'), {
         apiKey: config.elevenLabsApiKey, baseUrl: config.elevenLabsBaseUrl,
         voiceId: config.elevenLabsVoiceId, modelId: config.elevenLabsModelId, timeoutMs: config.speechTimeoutMs

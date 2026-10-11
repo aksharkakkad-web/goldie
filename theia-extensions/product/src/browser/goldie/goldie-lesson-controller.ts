@@ -251,6 +251,9 @@ export class GoldieLessonController {
         });
     }
     async retry(): Promise<void> {
+        // An ambiguous acceptance may already have committed. Recover paused rather
+        // than replaying the initial acceptance's teach-and-play continuation.
+        if (!this.current.busy && this.reference && !this.current.session) { await this.restore(); return; }
         if (!this.current.busy && this.retryWork) { await this.run(this.retryWork); }
     }
     async endSession(): Promise<void> {
@@ -367,7 +370,8 @@ export class GoldieLessonController {
             const failure = error as { code?: number; data?: { apiCode?: string } } | undefined;
             const apiCode = failure?.data?.apiCode;
             if (this.valid(token) && failure?.code === GOLDIE_NONRETRYABLE_ERROR_CODE
-                && apiCode && ['CONTEXT_CONFLICT', 'REVISION_CONFLICT', 'OFFER_NOT_FOUND'].includes(apiCode)) {
+                && apiCode && ['CONTEXT_CONFLICT', 'REVISION_CONFLICT', 'OFFER_NOT_FOUND',
+                    'ACTIVE_SESSION', 'REVISION_ALREADY_ACCEPTED', 'NO_LESSON_OFFER'].includes(apiCode)) {
                 // These responses definitively reject acceptance. Keep its exact snapshot as an archive,
                 // then retire recovery; network/auth/unknown failures can still represent an accepted session.
                 try {
@@ -375,12 +379,21 @@ export class GoldieLessonController {
                     const saved = this.storage.getItem(rejectedAcceptanceKey);
                     const archive = saved ? JSON.parse(saved) : [];
                     if (!Array.isArray(archive)) { throw new Error('Invalid rejection archive'); }
-                    this.storage.setItem(rejectedAcceptanceKey, JSON.stringify([...archive, { version: 2, ...acceptance, apiCode }]));
-                    this.storage.setItem(storageKey, 'null');
+                    const rejected = { version: 2, ...acceptance, apiCode };
+                    if (!archive.some(item => JSON.stringify(item) === JSON.stringify(rejected))) {
+                        this.storage.setItem(rejectedAcceptanceKey, JSON.stringify([...archive, rejected]));
+                    }
+                    // Another window may have saved newer recovery during the network request.
+                    // Read immediately before this synchronous retirement and never erase a different intent.
+                    if (this.storage.getItem(storageKey) === JSON.stringify({ version: 2, ...acceptance })) {
+                        this.storage.setItem(storageKey, 'null');
+                    }
                 } catch {
                     throw new Error('Goldie could not archive this rejected offer. Its recovery data is preserved; enable local storage, then retry.');
                 }
                 this.reference = undefined;
+                this.resetAudio();
+                this.update({ view: 'idle', offer: undefined, restored: false, audioState: 'idle' });
             }
             throw error;
         }

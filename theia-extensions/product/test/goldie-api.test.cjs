@@ -33,8 +33,10 @@ test('safe backend error semantics survive the actual Theia RPC error codec with
 test('Gemini errors survive RPC safely with backend retry semantics', async () => {
     for (const [code, retryable] of [
         ['GEMINI_NOT_CONFIGURED', false], ['GEMINI_AUTH_FAILED', false],
-        ['GEMINI_RATE_LIMITED', true], ['GEMINI_TIMEOUT', true],
-        ['GEMINI_UNAVAILABLE', true], ['GEMINI_INVALID_RESPONSE', true]
+        ['GEMINI_QUOTA', true], ['GEMINI_TIMEOUT', true],
+        ['GEMINI_UNAVAILABLE', true], ['GEMINI_INVALID_OUTPUT', true],
+        ['GEMINI_BUSY', true], ['GEMINI_REQUEST_REJECTED', false], ['GEMINI_CONTEXT_CHANGED', false],
+        ['REVISION_ALREADY_ACCEPTED', false], ['NO_LESSON_OFFER', false], ['CONTEXT_CONFLICT', false], ['REVISION_CONFLICT', false]
     ]) {
         await withServer((_req, res) => {
             res.writeHead(503, { 'Content-Type': 'application/json' });
@@ -45,6 +47,10 @@ test('Gemini errors survive RPC safely with backend retry semantics', async () =
                 const restored = codec.deserializeError(new Error('captured'), codec.serializeError(error));
                 assert.equal(restored.code, retryable ? -32002 : -32001);
                 assert.equal(restored.data.apiCode, code);
+                if (['CONTEXT_CONFLICT', 'REVISION_CONFLICT'].includes(code)) {
+                    assert.match(restored.message, /prepare a new lesson/i);
+                    assert.doesNotMatch(restored.message, /decline|accept the revision/i);
+                }
                 assert.doesNotMatch(JSON.stringify(error.toJson()), /private-key-secret|raw-prompt|\/Users\//);
                 assert.doesNotMatch(JSON.stringify(restored.toJson()), /private-key-secret|raw-prompt/);
                 return true;
@@ -58,14 +64,17 @@ test('generation has its own deadline while ordinary actions keep the shorter de
         setTimeout(() => { res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ shouldOffer: false, previewTopics: [] })); }, 70);
     }, async address => {
-        assert.deepEqual(await createGoldieApi(address, { timeoutMs: 20, generationTimeoutMs: 300 }).offer(offer),
+        assert.deepEqual(await createGoldieApi(address, { timeoutMs: 20, teachingTimeoutMs: 300 }).offer(offer),
             { shouldOffer: false, previewTopics: [] });
     });
     await withServer((_req, res) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.write('{'); },
-        async address => assert.rejects(createGoldieApi(address, { generationTimeoutMs: 40 }).teach(cases[2][2]), /too long/));
+        async address => assert.rejects(createGoldieApi(address, { teachingTimeoutMs: 40 }).teach(cases[2][2]), /too long/));
+    await withServer((_req, res) => {
+        setTimeout(() => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(session)); }, 70);
+    }, async address => assert.rejects(createGoldieApi(address, { timeoutMs: 20, teachingTimeoutMs: 300 }).startSession(cases[1][2]), /too long/));
 });
 
-test('rejects inconsistent offers and duplicate or unbounded generated phase IDs', async () => {
+test('rejects inconsistent offers and empty or duplicate generated phase IDs', async () => {
     for (const output of [
         { shouldOffer: true, previewTopics: [], offerId: 'offer' },
         { shouldOffer: true, previewTopics: ['Topic'] },
@@ -75,8 +84,7 @@ test('rejects inconsistent offers and duplicate or unbounded generated phase IDs
         await withServer((_req, res) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(output)); },
             async address => assert.rejects(createGoldieApi(address).offer(offer), /invalid response/));
     }
-    for (const phases of [[], [...session.phases, ...session.phases],
-        Array.from({ length: 7 }, (_, index) => ({ ...session.phases[0], id: `p${index}` }))]) {
+    for (const phases of [[], [...session.phases, ...session.phases]]) {
         await withServer((_req, res) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ ...session, phases })); },
             async address => assert.rejects(createGoldieApi(address).startSession(cases[1][2]), /invalid response/));
     }
@@ -237,7 +245,7 @@ test('deadline covers a response that never finishes', async () => {
         res.write('{');
     }, async address => {
         const start = Date.now();
-        await assert.rejects(createGoldieApi(address, { timeoutMs: 40 }).offer(offer), /too long/);
+        await assert.rejects(createGoldieApi(address, { teachingTimeoutMs: 40 }).offer(offer), /too long/);
         assert.ok(Date.now() - start < 1000);
     });
 });

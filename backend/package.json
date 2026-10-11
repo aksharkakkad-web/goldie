@@ -10,7 +10,8 @@
     "start": "node lib/src/server.js",
     "test": "yarn build && mocha \"lib/test/**/*.test.js\"",
     "smoke:elevenlabs": "node lib/src/smoke-elevenlabs.js",
-    "smoke:speech": "node lib/src/smoke-speech.js"
+    "smoke:speech": "node lib/src/smoke-speech.js",
+    "smoke:gemini": "node lib/src/smoke-gemini.js"
   },
   "dependencies": {
     "@fastify/cors": "11.3.1",

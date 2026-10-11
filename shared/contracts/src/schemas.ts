@@ -15,6 +15,13 @@ const HandoffSchema = z.string().max(32000).default('');
 
 export const KnowledgeProfileSchema = z.record(z.string(), z.unknown());
 
+/** Allowlisted model context; unrelated local profile fields never leave the backend. */
+export const TeachingProfileSchema = z.object({
+    level: z.enum(['beginner', 'intermediate']).default('beginner'),
+    knownConcepts: z.array(z.string().trim().min(1).max(200)).max(100).default([])
+});
+export type TeachingProfile = z.infer<typeof TeachingProfileSchema>;
+
 export const PhaseSchema = z.object({
     id: IdentifierSchema,
     title: z.string().trim().min(1),
