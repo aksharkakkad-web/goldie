@@ -8,12 +8,36 @@ export class BrowserMedia {
     }
     get lesson() { return this.tracks.get('lesson'); }
     get position() { return this.tracks.get('lesson')?.audio.currentTime ?? 0; }
+    get caption() {
+        const entry = this.tracks.get(this.selected);
+        if (!entry?.played || !entry.sentences.length) { return ''; }
+        const { currentTime, duration } = entry.audio;
+        const progress = Number.isFinite(duration) && duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
+        const target = progress * entry.textLength;
+        let end = 0;
+        for (const sentence of entry.sentences) {
+            end += sentence.length;
+            if (target < end) { return sentence; }
+        }
+        return entry.sentences.at(-1);
+    }
     subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
     emit(event) { for (const fn of this.listeners) { fn(event); } }
-    load(track, speech) {
+    load(track, speech, text = '') {
         this.release(track); this.select(track);
         const audio = new this.env.Audio(speech.audioUrl); audio.preload = 'none';
-        const entry = { audio }; this.tracks.set(track, entry);
+        // The MP3 API has no alignment timestamps. Estimate sentence boundaries
+        // from text length and the actual clip duration, never a wall-clock timer.
+        const sentences = [...new Intl.Segmenter('en', { granularity: 'sentence' }).segment(text)].map(item => item.segment.trim()).filter(Boolean);
+        const entry = { audio, sentences, textLength: sentences.reduce((sum, sentence) => sum + sentence.length, 0), played: false }; this.tracks.set(track, entry);
+        let previousCaption = '';
+        for (const event of ['timeupdate', 'loadedmetadata', 'seeked']) {
+            audio.addEventListener(event, () => {
+                if (this.tracks.get(track) !== entry || this.selected !== track) { return; }
+                const caption = this.caption;
+                if (caption !== previousCaption) { previousCaption = caption; this.emit('caption'); }
+            });
+        }
         audio.addEventListener('ended', () => { if (this.tracks.get(track) === entry && this.selected === track) { this.pause(); this.emit('ended'); } });
         audio.addEventListener('error', () => { if (this.tracks.get(track) === entry) { this.pause(); this.emit('audio-error'); } });
     }
@@ -36,8 +60,8 @@ export class BrowserMedia {
             if (entry.audio.ended) { entry.audio.currentTime = 0; }
             await entry.audio.play();
             if (generation !== this.generation) { entry.audio.pause(); return; }
-            this.playing = true; this.emit('playing'); this.meter(entry);
-        } catch { throw Object.assign(new Error('Audio could not play. Read the explanation or try Play again.'), { retryable: true }); }
+            entry.played = true; this.playing = true; this.emit('playing'); this.meter(entry);
+        } catch { throw Object.assign(new Error('Audio could not play. Try Play again, skip or finish this lesson.'), { retryable: true }); }
     }
     meter(entry) {
         if (!entry.analyser) { return; }
@@ -91,10 +115,45 @@ export class BrowserMedia {
             recorder.addEventListener('stop', () => { this.releaseStream(); this.resolveStop?.(); });
             recorder.addEventListener('error', () => { this.cancelRecording(); this.emit('recording-canceled'); });
             recorder.start(250);
+            this.meterMicrophone(stream);
             this.timer = this.env.setTimeout(() => this.stopRecording(), 30000);
         } catch { this.cancelRecording(); throw new Error('The microphone could not start recording. Continue the lesson or try again.'); }
     }
-    releaseStream() { this.stream?.getTracks().forEach(track => track.stop()); this.stream = null; }
+    meterMicrophone(stream) {
+        if (!this.env.AudioContext || !this.env.requestAnimationFrame) { return; }
+        try {
+            this.context ??= new this.env.AudioContext();
+            void Promise.resolve(this.context.resume?.()).catch(() => {});
+            this.microphoneSource = this.context.createMediaStreamSource(stream);
+            this.microphoneAnalyser = this.context.createAnalyser();
+            this.microphoneAnalyser.fftSize = 1024;
+            this.microphoneSource.connect(this.microphoneAnalyser);
+            const samples = new Float32Array(this.microphoneAnalyser.fftSize);
+            let previous;
+            const frame = time => {
+                if (this.stream !== stream) { return; }
+                this.microphoneAnalyser.getFloatTimeDomainData(samples);
+                const rms = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+                const target = rms <= 0.012 ? 0 : Math.pow(Math.min(1, (rms - 0.012) / 0.208), 0.72);
+                const dt = previous === undefined ? 1 / 60 : Math.min(0.1, (time - previous) / 1000); previous = time;
+                this.level += (target - this.level) * (1 - Math.exp(-dt / (target > this.level ? 0.035 : 0.26)));
+                this.microphoneFrame = this.env.requestAnimationFrame(frame);
+            };
+            this.microphoneFrame = this.env.requestAnimationFrame(frame);
+        } catch {
+            // Recording still works when a browser cannot expose an input analyser.
+            this.stopMicrophoneMeter();
+        }
+    }
+    stopMicrophoneMeter() {
+        if (this.microphoneFrame !== undefined) { this.env.cancelAnimationFrame?.(this.microphoneFrame); this.microphoneFrame = undefined; }
+        this.microphoneSource?.disconnect(); this.microphoneAnalyser?.disconnect();
+        this.microphoneSource = null; this.microphoneAnalyser = null; this.level = 0;
+    }
+    releaseStream() {
+        this.stopMicrophoneMeter();
+        this.stream?.getTracks().forEach(track => track.stop()); this.stream = null;
+    }
     stopRecording() {
         this.env.clearTimeout(this.timer);
         const recorder = this.recorder;

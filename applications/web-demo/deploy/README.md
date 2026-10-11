@@ -25,15 +25,21 @@ The tunnel exposes only the loopback judge bridge—not the IDE, filesystem, ter
 or raw backend. It requires the separate secret, rejects browser Origin headers,
 allowlists API methods/paths and strips all incoming credentials before forwarding.
 
-The bridge reserves a conservative total **12,000 speech-text characters** and
-**500 POST attempts** across all visitors, and allows at most two concurrent POSTs.
+Akshar explicitly approved disabling the shared cumulative caps on October 11.
+The current bridge starts with `GOLDIE_JUDGE_BUDGET_ENABLED=false`: it does not read,
+create, overwrite or reset the usage ledger. Anyone with the public link can use
+the available provider credits. Authentication, route/body/recording limits,
+timeouts, accepted-content checks and the two-concurrent-POST limit remain active.
+
+By default, without that override, the bridge reserves a conservative total
+**12,000 speech-text characters** and **500 POST attempts** across all visitors.
 Reservations happen before upstream work; failures and speech-cache hits still
 count. The total persists in `backend/.data/web-demo-judge/usage.json`. Unknown
 speech content fails before upstream access; load the explanation again after a
 bridge restart. Never delete/reset the usage file to bypass the limit without
 Akshar's explicit approval. This is a request/character guard, not an ElevenLabs
 billing/balance measurement. Read-only access, replay and browser audio resume do
-not generate speech. Reaching the voice cap leaves text/read/finish usable.
+not generate speech. Reaching the voice cap leaves coverage/skip/end controls usable.
 
 ## Keep running for judges
 
@@ -48,7 +54,7 @@ There are three owned services:
 2. Judge bridge 8798, started from this worktree with:
 
    ```sh
-   GOLDIE_JUDGE_CONFIG=/Users/aksharkakkad/.codex/worktrees/goldie-web-demo/goldie/backend/.data/web-demo-judge/private.json yarn --cwd applications/web-demo start:judge-bridge
+   GOLDIE_JUDGE_BUDGET_ENABLED=false GOLDIE_JUDGE_CONFIG=/Users/aksharkakkad/.codex/worktrees/goldie-web-demo/goldie/backend/.data/web-demo-judge/private.json yarn --cwd applications/web-demo start:judge-bridge
    ```
 
 3. Temporary `cloudflared tunnel --url http://127.0.0.1:8798 --no-autoupdate --protocol http2`.
@@ -87,6 +93,35 @@ responses are bounded at 4 MiB to remain below the function payload limit.
 
 ## Verified versus still open
 
+- Caption revision: production deployment `dpl_3ZtwXK2XKJ2bNusqXy1uPN7SdiHn`
+  is Ready and aliased to the public URL. The judge site removes lesson prose and transcript-history
+  panels in favor of one sentence caption. Timing is approximate (text length /
+  actual audio duration), without new provider calls. Answer-ended offers an
+  on-screen return prompt; Resume preserves the original clip position. Practice
+  remains text-based. The main microphone supports start/send/follow-up and
+  permission-error recovery. All 68 app tests, build, controlled HTTP contract,
+  responsive in-app-browser verification and independent code review pass.
+  Public assets match the reviewed source and `/demo-config` is reachable.
+- Read-only diagnosis: the public backend is reachable and the latest user API
+  question's transcription, Gemini, speech and MP3 requests all succeeded. The
+  tunnel logged transient reconnects. The generic client fetch error is not a
+  provider quota message; exact account headroom remains unverified because the
+  ElevenLabs key cannot read subscription balance and Gemini metadata is not a
+  billing/usage API. Do not infer credits from `/health` or buy credits automatically.
+
+- October 11 refresh: production deployment `dpl_ARB5D9XEBuP18fPvqozs5nuHZZsn`
+  is Ready and aliased to the public judge URL. `/demo-config` reports
+  `{connected:true, reachable:true}`. Backend 8797, bridge 8798 and the new temporary
+  tunnel are running; the production bridge URL was updated without rotating its
+  secret. The approved cumulative-cap opt-out does not create/reset a usage ledger.
+- All 57 app tests, syntax build, controlled judge/backend HTTP integration,
+  deployed controlled browser suite and focused independent review pass. The
+  voice flow also passed against actual providers with two prerecorded local
+  spoken WAV inputs: transcription, visible question/follow-up turns, answer audio,
+  unchanged paused lesson position, same-clip resume and early-end recap. Three
+  speech requests and two transcription/answer requests succeeded without retries.
+  Microphone hardware alone was replaced with audio fixtures; real hardware,
+  permission prompts and a human speaking remain manual verification.
 - Public HTTPS page/assets load anonymously without an authentication challenge;
   private-file attempts return 404 and cross-origin requests fail closed. Direct
   unauthenticated tunnel requests still return 401.
@@ -98,9 +133,10 @@ responses are bounded at 4 MiB to remain below the function payload limit.
 - The actual Stage 3 backend routes/store also pass through the real judge
   gateway and budget bridge with controlled model/speech providers. Run with
   `GOLDIE_CONTRACT_JUDGE=1 GOLDIE_CONTRACT_BACKEND_ROOT=/absolute/built-checkout node applications/web-demo/test/contract-check.mjs`.
-- No Gemini/ElevenLabs generation was used for deployment checks. **The complete
-  live-provider browser rehearsal remains unverified**; Akshar should do that once
-  before judging. Do not repeat paid audio smoke tests during automated QA.
+- The earlier deployment checks used no Gemini/ElevenLabs generation. The refresh
+  check above was explicitly authorized and exercised real-provider voice Q&A.
+  A complete human rehearsal (physical microphone, practice/review and restoration)
+  remains open. Do not repeat paid audio smoke tests during automated QA.
 
 Sources: [Cloudflare Quick Tunnels](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/),
 [Vercel Build Output API](https://vercel.com/docs/build-output-api/primitives).

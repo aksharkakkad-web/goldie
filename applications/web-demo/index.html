@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#090a0c">
-  <meta name="description" content="Step inside Goldie. Follow a sample build and understand the engineering behind it.">
+  <meta name="description" content="Replay the Team Tasks implementation and learn the engineering decisions behind it with Goldie.">
   <title>Goldie — learn as you build</title>
   <link rel="icon" href="/assets/goldie.png">
   <link rel="stylesheet" href="/style.css">
@@ -14,8 +14,8 @@
   <section id="opening-screen" class="opening-screen" role="status" aria-label="Welcome to Goldie" hidden>
     <div class="opening-brand">
       <div class="opening-mark"><img src="/assets/goldie.png" width="80" height="80" alt=""></div>
-      <p class="opening-eyebrow">Your opt-in engineering mentor</p>
-      <h1>Goldie IDE Demo</h1>
+      <p class="opening-eyebrow">Your engineering mentor</p>
+      <h1>Goldie</h1>
       <p class="opening-caption">Build it. Understand it.</p>
     </div>
     <span class="opening-foot">The code is only half the story.</span>
@@ -24,8 +24,8 @@
   <div class="ide">
     <header class="titlebar">
       <div class="window-controls" aria-hidden="true"><i></i><i></i><i></i></div>
-      <div class="window-title"><img src="/assets/goldie.png" alt=""><span>teamspace</span><span class="title-separator">/</span><span>Goldie</span></div>
-      <div class="top-actions"><span class="local-pill">Interactive walkthrough</span><button id="reset" class="icon-button" aria-label="Reset demo" title="Reset demo"></button></div>
+      <div class="window-title"><img src="/assets/goldie.png" alt=""><span>team-tasks</span><span class="title-separator">/</span><span>Goldie</span></div>
+      <div class="top-actions"><span class="local-pill">Prepared walkthrough</span><button id="reset" class="icon-button" aria-label="Reset demo" title="Reset demo"></button></div>
     </header>
     <nav class="activity-rail" aria-label="Workspace panels">
       <button id="explorer-toggle" class="rail-button selected" aria-label="Toggle explorer" title="Explorer"></button>
@@ -37,16 +37,16 @@
     </nav>
     <aside class="explorer" aria-label="File explorer">
       <div class="pane-heading"><span>Explorer</span><span aria-hidden="true">···</span></div>
-      <div class="project-name"><span aria-hidden="true">⌄</span> TEAMSPACE <span class="sample-label">sample</span></div>
+      <div class="project-name"><span aria-hidden="true">⌄</span> TEAM TASKS <span class="sample-label">prepared replay</span></div>
       <div id="file-tree"></div>
-      <div class="explorer-foot"><span class="tiny-dot"></span> Read-only sample workspace</div>
+      <div class="explorer-foot"><span class="tiny-dot"></span> Read-only implementation replay</div>
     </aside>
     <main class="workspace" aria-label="Sample code workspace">
       <div id="editor-tabs" class="editor-tabs" role="tablist" aria-label="Open files"></div>
       <div id="breadcrumb" class="breadcrumb"></div>
       <section class="editor" id="editor" aria-label="Code editor" tabindex="0"></section>
       <section class="terminal" aria-label="Prepared terminal replay">
-        <div class="terminal-tabs"><span class="terminal-tab active">Terminal</span><span class="terminal-tab">Output</span><span class="terminal-disclosure">Prepared replay · not a live shell</span><button id="terminal-toggle" class="icon-button" aria-label="Collapse terminal" title="Collapse terminal"></button></div>
+        <div class="terminal-tabs"><span class="terminal-tab active">Replay log</span><span class="terminal-tab">Output</span><span class="terminal-disclosure">Prepared sequence · no commands run here</span><button id="terminal-toggle" class="icon-button" aria-label="Collapse replay log" title="Collapse replay log"></button></div>
         <div id="terminal-output" class="terminal-output" aria-live="polite"></div>
         <div class="replay-bar"><span id="replay-label">Ready to run the sample prompt</span><button id="replay-action" class="small-button">Run sample prompt</button></div>
       </section>
@@ -59,7 +59,6 @@
         <select id="knowledge-level"><option value="beginner">Beginner — start with the why</option><option value="intermediate">Intermediate — go a little deeper</option></select>
         <p>The coding sequence is prepared. Teaching uses your connected Goldie backend. No microphone starts until you ask a question.</p>
       </div>
-      <div id="next-step" class="next-step" role="status" aria-live="polite"><span>Next step</span><p id="next-step-text">Click Run sample prompt in the terminal to begin.</p></div>
       <div class="orb-stage">
         <div id="processing-loader" class="processing-loader" hidden>
           <img src="/assets/goldie.png" alt="" width="36" height="36">
@@ -69,15 +68,17 @@
         <div class="orb-wrap"><canvas id="orb" aria-hidden="true"></canvas><div class="orb-fallback" aria-hidden="true"></div></div>
         <p id="orb-status" class="orb-status" role="status" aria-live="polite">Ready when you are</p><div id="phase-dots" class="phase-dots"></div>
       </div>
-      <div id="mentor-content" class="mentor-content" tabindex="-1"></div>
       <div class="player-controls" aria-label="Goldie audio controls">
-        <button id="ask" class="round-control" aria-label="Ask Goldie" title="Ask Goldie" disabled></button>
+        <button id="ask" class="round-control" aria-label="Ask Goldie by voice" title="Ask Goldie by voice" disabled></button>
         <button id="play" class="round-control main-control" aria-label="Start learning" title="Start learning" disabled></button>
         <button id="skip" class="round-control" aria-label="Skip explanation" title="Skip explanation" disabled></button>
       </div>
+      <p id="speech-caption" class="speech-caption" role="status" aria-live="polite" aria-atomic="true" hidden></p>
+      <div id="mentor-content" class="mentor-content" tabindex="-1"></div>
+      <div id="next-step" class="next-step" role="status" aria-live="polite"><span>Next</span><p id="next-step-text">Run the prepared code replay to begin.</p></div>
       <div class="mentor-foot"><span id="privacy-note">You choose when to learn.</span></div>
     </aside>
-    <footer class="statusbar"><div><span id="status-branch"></span><span>main</span><span class="status-separator">⌁</span><span id="workspace-status">Sample workspace</span></div><div><span id="status-file">TypeScript React</span><span>UTF-8</span><span>Goldie</span></div></footer>
+    <footer class="statusbar"><div><span id="status-branch"></span><span>main</span><span class="status-separator">⌁</span><span id="workspace-status">Prepared workspace</span></div><div><span id="status-file">JavaScript</span><span>UTF-8</span><span>Goldie</span></div></footer>
   </div>
 </body>
 </html>

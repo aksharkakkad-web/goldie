@@ -6,18 +6,23 @@ import { pathToFileURL } from 'node:url';
 import { apiMethod, bodyBytes, responseBytes, matches, failure, fail, json, security } from './http.mjs';
 
 /** Only this bounded, authenticated bridge is exposed by the temporary tunnel. */
-export async function createJudgeBridge({ backendUrl, token, usageFile, characterLimit = 12000, requestLimit = 500 } = {}) {
+export async function createJudgeBridge({ backendUrl, token, usageFile, characterLimit = 12000, requestLimit = 500, budgetEnabled = true } = {}) {
     const backend = new URL(backendUrl);
     if (backend.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(backend.hostname)
         || backend.username || backend.password || backend.pathname !== '/' || backend.search || backend.hash) { throw new Error('Use a loopback backend.'); }
     if (!token || token.length < 32 || !usageFile || !isAbsolute(usageFile)) { throw new Error('Configure a strong bridge token and absolute usage file.'); }
     if (![characterLimit, requestLimit].every(value => Number.isSafeInteger(value) && value > 0)) { throw new Error('Use positive integer demo limits.'); }
+    if (typeof budgetEnabled !== 'boolean') { throw new Error('Use an explicit boolean budget setting.'); }
     let usage = { characters: 0, requests: 0 };
-    try { usage = JSON.parse(await readFile(usageFile, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') { throw new Error('Demo usage is unreadable; refusing to reset the budget.'); } }
-    if (![usage.characters, usage.requests].every(value => Number.isSafeInteger(value) && value >= 0)) { throw new Error('Demo usage is invalid.'); }
-    await mkdir(dirname(usageFile), { recursive: true, mode: 0o700 });
+    if (budgetEnabled) {
+        try { usage = JSON.parse(await readFile(usageFile, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') { throw new Error('Demo usage is unreadable; refusing to reset the budget.'); } }
+        if (![usage.characters, usage.requests].every(value => Number.isSafeInteger(value) && value >= 0)) { throw new Error('Demo usage is invalid.'); }
+        await mkdir(dirname(usageFile), { recursive: true, mode: 0o700 });
+    }
     const content = new Map(); let reservation = Promise.resolve(); let inFlight = 0;
     const reserve = characters => {
+        // Explicit opt-out leaves any historical ledger untouched; defaults remain capped.
+        if (!budgetEnabled) { return Promise.resolve(); }
         const next = reservation.then(async () => {
             if (usage.characters + characters > characterLimit) { throw failure(429, 'DEMO_VOICE_BUDGET', 'The shared demo voice budget is reached. You can still read and finish the lesson.'); }
             if (usage.requests >= requestLimit) { throw failure(429, 'DEMO_REQUEST_BUDGET', 'The shared judging request limit is reached. Ask the team before continuing.'); }
@@ -67,6 +72,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         const filename = process.env.GOLDIE_JUDGE_CONFIG;
         if (!filename || !isAbsolute(filename)) { throw new Error('Missing configuration.'); }
         const config = JSON.parse(await readFile(filename, 'utf8'));
+        const override = process.env.GOLDIE_JUDGE_BUDGET_ENABLED;
+        if (override !== undefined) {
+            if (!['true', 'false'].includes(override)) { throw new Error('Invalid budget override.'); }
+            config.budgetEnabled = override === 'true';
+        }
         const server = await createJudgeBridge(config);
         server.listen(config.port ?? 8798, '127.0.0.1', () => console.log('Protected Goldie judge bridge listening on loopback. No paid startup requests.'));
         const stop = () => { server.closeAllConnections(); server.close(); };

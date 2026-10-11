@@ -18,7 +18,7 @@ async function folder(t) {
     const dir = await mkdtemp(join(tmpdir(), 'goldie-judge-test-'));
     t.after(() => rm(dir, { recursive: true, force: true })); return dir;
 }
-async function fixture(t, limit = 20) {
+async function fixture(t, limit = 20, options = {}) {
     const calls = [];
     const upstream = await serve(t, createServer(async (req, res) => {
         const chunks = []; for await (const chunk of req) { chunks.push(chunk); }
@@ -28,7 +28,7 @@ async function fixture(t, limit = 20) {
             : req.url === '/health' ? { ok: true } : { ok: true, audioUrl: `/api/audio/${'a'.repeat(64)}` }));
     }));
     const usageFile = join(await folder(t), 'usage.json');
-    const bridge = await createJudgeBridge({ backendUrl: upstream, token, usageFile, characterLimit: limit });
+    const bridge = await createJudgeBridge({ backendUrl: upstream, token, usageFile, characterLimit: limit, ...options });
     const url = await serve(t, bridge);
     const post = (path, body) => fetch(url + path, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
     return { calls, usageFile, url, post, upstream };
@@ -69,6 +69,40 @@ test('parallel speech requests cannot race through the shared budget', async t =
     const responses = await Promise.all([f.post('/api/speech', { sessionId: 's1', contentId: 'c1' }), f.post('/api/speech', { sessionId: 's1', contentId: 'c1' })]);
     assert.deepEqual(responses.map(response => response.status).sort(), [200, 429]);
     assert.equal(f.calls.filter(call => call.path === '/api/speech').length, 1);
+});
+test('explicitly disabled cumulative caps allow speech without creating or resetting usage', async t => {
+    const f = await fixture(t, 1, { budgetEnabled: false });
+    await f.post('/api/teach', { sessionId: 's1', phaseId: 'p1' });
+    for (let i = 0; i < 3; i++) {
+        assert.equal((await f.post('/api/speech', { sessionId: 's1', contentId: 'c1' })).status, 200);
+    }
+    await assert.rejects(readFile(f.usageFile), { code: 'ENOENT' });
+    const saved = JSON.stringify({ characters: 12001, requests: 501 });
+    await writeFile(f.usageFile, saved);
+    const restarted = await createJudgeBridge({ backendUrl: f.upstream, token, usageFile: f.usageFile, budgetEnabled: false });
+    const url = await serve(t, restarted);
+    assert.equal((await fetch(url + '/api/offer', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: '{}' })).status, 200);
+    assert.equal(await readFile(f.usageFile, 'utf8'), saved);
+    assert.equal((await fetch(url + '/health')).status, 401);
+    assert.equal((await fetch(url + '/api/speech', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: '{"sessionId":"s1","contentId":"unknown"}' })).status, 409);
+    assert.equal((await f.post('/api/offer', { handoff: 'x'.repeat(65537) })).status, 413);
+});
+test('disabling cumulative caps retains the two-concurrent-request limit', async t => {
+    let release; const held = new Promise(resolve => { release = resolve; });
+    let reached; const bothReached = new Promise(resolve => { reached = resolve; }); let calls = 0;
+    const upstream = await serve(t, createServer(async (_req, res) => {
+        if (++calls === 2) { reached(); }
+        await held; res.setHeader('content-type', 'application/json'); res.end('{}');
+    }));
+    const bridge = await createJudgeBridge({ backendUrl: upstream, token, usageFile: join(await folder(t), 'usage.json'), budgetEnabled: false });
+    const url = await serve(t, bridge);
+    const post = () => fetch(url + '/api/offer', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: '{}' });
+    const first = post(); const second = post();
+    try {
+        await bothReached;
+        const third = await post(); assert.equal(third.status, 429);
+        assert.equal((await third.json()).error.code, 'DEMO_BUSY'); assert.equal(calls, 2);
+    } finally { release(); await Promise.all([first, second]); }
 });
 test('corrupt usage is not reset on restart and request limits stop generation', async t => {
     const dir = await folder(t); const usageFile = join(dir, 'usage.json');

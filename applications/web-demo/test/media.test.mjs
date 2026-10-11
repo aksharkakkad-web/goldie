@@ -47,3 +47,59 @@ test('microphone denial is actionable and cancellation discards recorded bytes',
     const g = setup(); await g.media.startRecording(); g.media.stopRecording(); g.media.cancelRecording();
     await assert.rejects(g.media.recordingData(), /record/i);
 });
+test('microphone energy moves the orb level and stops when recording ends', async () => {
+    const f = setup(); let frame; let canceled = 0; let disconnected = 0;
+    const analyser = { fftSize: 1024, getFloatTimeDomainData(samples) { samples.fill(0.3); }, disconnect() { disconnected++; } };
+    f.env.AudioContext = class {
+        resume() { return Promise.resolve(); }
+        createMediaStreamSource() { return { connect() {}, disconnect() { disconnected++; } }; }
+        createAnalyser() { return analyser; }
+    };
+    f.env.requestAnimationFrame = callback => { frame = callback; return 7; };
+    f.env.cancelAnimationFrame = () => { canceled++; };
+    await f.media.startRecording();
+    frame(0);
+    assert.ok(f.media.level > 0, 'live microphone energy should animate the orb');
+    f.media.stopRecording();
+    assert.equal(f.media.level, 0);
+    assert.ok(canceled > 0);
+    assert.equal(disconnected, 2);
+    assert.ok(f.stopped > 0);
+});
+test('captions follow the selected audio position and preserve the lesson sentence across interruption', async () => {
+    const f = setup();
+    f.env.Audio = class extends EventTarget {
+        currentTime = 0; duration = 10; ended = false;
+        async play() {} pause() {} removeAttribute() {} load() {}
+    };
+    f.media.load('lesson', { audioUrl: '/lesson.mp3' }, 'First point. Second idea.');
+    assert.equal(f.media.caption, '');
+    await f.media.play();
+    assert.equal(f.media.caption, 'First point.');
+    const lessonAudio = f.media.lesson.audio;
+    lessonAudio.currentTime = 7;
+    const events = []; f.media.subscribe(event => events.push(event));
+    lessonAudio.dispatchEvent(new Event('timeupdate'));
+    assert.equal(f.media.caption, 'Second idea.');
+    assert.ok(events.includes('caption'));
+    f.media.pause();
+    f.media.load('answer', { audioUrl: '/answer.mp3' }, 'An answer. Another thought.');
+    assert.equal(f.media.caption, '');
+    await f.media.play(); assert.equal(f.media.caption, 'An answer.');
+    f.media.select('lesson'); await f.media.play();
+    assert.equal(lessonAudio.currentTime, 7);
+    assert.equal(f.media.caption, 'Second idea.');
+    f.media.clear(); assert.equal(f.media.caption, '');
+});
+test('captions do not race ahead before duration is known or combine separate sentences', async () => {
+    const f = setup();
+    f.env.Audio = class extends EventTarget {
+        currentTime = 0; duration = NaN; ended = false;
+        async play() {} pause() {} removeAttribute() {} load() {}
+    };
+    f.media.load('lesson', { audioUrl: '/lesson.mp3' }, 'Use version 1.5. Validate inputs! Save safely?');
+    await f.media.play();
+    assert.equal(f.media.caption, 'Use version 1.5.');
+    f.media.lesson.audio.duration = 12; f.media.lesson.audio.currentTime = 11;
+    assert.equal(f.media.caption, 'Save safely?');
+});

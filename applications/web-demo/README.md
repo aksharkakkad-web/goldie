@@ -13,7 +13,7 @@ yarn --cwd applications/web-demo start
 ```
 
 Open <http://127.0.0.1:4317>. This app needs no installation or new dependencies.
-Run the sample prompt, browse the files and handoff, then Prepare lesson. Without
+Run the recorded Team Tasks prompt, browse the files and handoff, then Prepare lesson. Without
 a configured backend the coding replay works and lesson preparation explains that
 the live mentor is unavailable. It never substitutes prepared answers for live AI.
 
@@ -83,11 +83,14 @@ backend, not a cloud speech service.
   lesson, recording or voice request. Session storage skips the intro on refresh;
   blocked storage still works. Reduced motion removes the transition. Covered
   controls are temporarily inert, with keyboard access restored automatically.
-- Disclosed deterministic team-management replay, file browsing, syntax-highlighted
-  read-only code, terminal replay and a bounded handoff. Sample auth/database imports
-  are illustrative; the sample app is not compiled/executed or claimed as verified.
-- Merged palette/assets/shaders, waveform-reactive orb, reduced-motion handling,
-  static WebGL fallback and responsive shell.
+- Disclosed replay of the local Team Tasks Codex run, with snapshots of its create
+  form, POST validation, JSON task store and bounded handoff. The website does not
+  run Codex, execute commands or write project files. The recorded run passed local
+  tests and build; browser submit/reload verification remained open at that handoff.
+- Merged palette/assets/shaders, a waveform-reactive orb for both the visitor's
+  microphone and Goldie's speech, reduced-motion handling, static WebGL fallback
+  and responsive shell. Microphone analysis stops with capture and is never played
+  back to the visitor.
 - A persistent Next step cue and purple button glow guide replay, acceptance,
   lessons, optional practice and final review. Waiting states do not urge another
   click; reduced-motion keeps a static highlight.
@@ -97,10 +100,19 @@ backend, not a cloud speech service.
   percentage, countdown or minimum wait. The editor remains usable, errors/Cancel
   clear the loader, and reduced-motion leaves a static visible bar.
 - Backend offers, opt-in variable-phase lessons, pause/resume, skip, distinct
-  self-reported familiarity, read completion and early end. Speech failure leaves
-  text/coverage/exit usable.
-- Voice-question lifecycle via Stage 3 endpoints, separate lesson/answer tracks,
-  explicit original-clip resume and late-result suppression.
+  self-reported familiarity, coverage and early end. Per Akshar's judge-site
+  direction, lesson titles/objectives/full explanations and conversation transcript
+  panels are not rendered. Optional practice and recaps remain text-based.
+- A single sentence caption follows the selected lesson or answer audio. Timing
+  is approximate, weighted by sentence length against the actual MP3 duration;
+  the speech response supplies no alignment timestamps. Pause and same-clip resume
+  preserve the caption position. Captions generate no extra model/speech calls.
+- Voice-question lifecycle via Stage 3 endpoints, spoken follow-ups without resuming
+  between turns, separate lesson/answer tracks, explicit original-clip resume and
+  late-result suppression. The microphone control can start, stop/send, and start
+  another question. After answer playback ends, an on-screen "Ready to go back to
+  the lesson?" prompt offers Resume lesson or Ask another; it is not extra speech.
+  Provider/source limitations remain visible and never masquerade as lesson audio.
 - Optional per-covered-phase text practice, local drafts/reveal and final cached
   review. No grades, mastery score, quiz speech or response submission.
 - Reload recovers accepted-session intent/progress without autoplay/recording.
@@ -111,6 +123,44 @@ Live Codex integration, arbitrary workspaces and source-grounded file answers ar
 not implemented. No user repo, secrets or unbounded source are uploaded.
 
 ## Verification and limits
+
+**October 11 caption revision:** approved after successful microphone startup and
+local cancellation in the Codex in-app browser. The user's subsequent "So what's
+an API?" turn returned HTTP 200 for transcription, Gemini, speech and audio. A
+read-only credit check found Gemini model access valid; the restricted ElevenLabs
+key returns `missing_permissions` for subscription balance, so exact remaining
+credits are unverified. The tunnel logged brief disconnects near the reported
+generic fetch failure; this is not proof of quota exhaustion. No new generation
+was made for this diagnosis or caption verification.
+
+The caption revision passes 68 unit/server tests, syntax build and focused
+independent review. Controlled in-app-browser QA verifies advancing one sentence,
+record/send, caption-only answers, answer-ended return prompt and exact original
+60-second clip resume. The fixtures replace API/recording/playback boundaries;
+they are not another live provider or physical-microphone test. The revised browser
+regression script is retained, but this revision's UI check uses the in-app browser.
+Production deployment `dpl_3ZtwXK2XKJ2bNusqXy1uPN7SdiHn` is Ready and aliased
+to the existing public URL. Public assets match this checkout and the backend is
+reachable. This deployment preceded Git publication; branch integration is a
+separate checkpoint and does not change the running backend or tunnel.
+
+**October 11 Team Tasks refresh:** applied against `codex/web-demo` at `6adf23a`.
+The supplied patch's pasted whitespace was normalized; all twelve resulting file
+hashes matched its recorded hashes before two release-review fixes: retain enabled
+Cancel during pending voice work and remove a canceled retried follow-up's pending
+turn. Both fixes have failing-then-passing regression tests. All 55 local tests,
+syntax build, controlled judge-gateway/backend integration and independent review
+pass. The allowlisted output is rebuilt from this checkout. Akshar subsequently
+approved disabling cumulative demo caps, retaining authentication and per-request
+protections. All 57 tests pass, including uncapped-mode preservation of missing or
+exhausted ledgers and two-request concurrency. The refresh is deployed to the
+existing production project as `dpl_ARB5D9XEBuP18fPvqozs5nuHZZsn`; the public health
+check reports connected and reachable. Two prerecorded spoken WAV fixtures passed
+through actual local Whisper, Gemini answers and ElevenLabs playback, followed by
+exact original-clip resume and a partial recap. This is not a physical-microphone
+or human speaking/permission check. The existing ledger is not reset or initialized.
+Preserve the original patch and rebuilt output together; do not
+represent controlled-provider checks as live-provider evidence.
 
 **Unit/server tests** exercise real replay/controller/rendering/transport/recording
 logic, doubling only browser/provider boundaries. **Browser QA** exercises the real
@@ -141,13 +191,16 @@ scripts again unless Akshar explicitly requests them. Local health checks, revea
 cached review, and replay do not generate paid speech. New lesson/answer text does;
 exact speech cache hits reuse the existing audio.
 
-**Full live browser walkthrough: not verified.** On October 11, Akshar topped up;
+**Earlier live browser checkpoint (superseded for Q&A by the refresh check above).**
+On October 11, Akshar topped up;
 one explicitly requested real 1050-character ElevenLabs check returned valid MP3
 audio, resolving the earlier quota failure. After the request to preserve credits,
 only controlled-provider tests and local readiness/health checks were run. The
 connected preview now uses the existing Stage 3 backend and server-side keys, with
 local transcription dependencies present. The human live walkthrough is still
-open; provider success is not proof of the complete browser journey. The basic
+open for a physical microphone and the complete human practice/review journey.
+The refresh check above separately verifies real-provider Q&A/playback/resume.
+The basic
 `start` command still defaults to disconnected; use `start:connected` as above.
 No other checkout or desktop/backend/shared source was changed.
 
@@ -189,8 +242,9 @@ Akshar approved the Vercel website plus protected temporary Cloudflare connectio
 then explicitly requested removal of the browser login. Judges open the public
 website directly, with no account or passcode; real lessons, questions and practice
 route to the existing isolated Mac backend. The Mac must remain awake and online.
-The shared 12,000-character speech/500-POST cap preserves credits; no provider keys
-leave the Mac. The server-to-server bridge secret remains required. Anyone with
-the public link can use the shared budget. See the deployment runbook above. This is not a production multi-user
+Akshar approved disabling the shared cumulative speech/POST caps; no provider keys
+leave the Mac. The server-to-server bridge secret, per-request limits and concurrency
+protection remain required. Anyone with the public link can consume available
+provider credits. See the deployment runbook above. This is not a production multi-user
 backend or independent cloud-hosting claim. Website source publication uses the
 separate `codex/web-demo` branch; a merge into `main` requires separate approval.

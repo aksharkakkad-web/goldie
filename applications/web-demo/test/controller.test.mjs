@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DemoController } from '../src/controller.js';
+import { BrowserMedia } from '../src/media.js';
 
 const phase = id => ({ id, title: `Topic ${id}`, objective: 'Understand the boundary', description: 'A coherent explanation.' });
 function setup(count = 3) {
@@ -68,6 +69,8 @@ test('question processing distinguishes recording, transcription, thinking and a
     const release = deferRequest(f, '/api/ask');
     const pending = f.controller.questionSend(); await settle();
     assert.equal(f.controller.state.processing, 'thinking'); assert.equal(f.controller.state.busy, true);
+    assert.equal(f.controller.state.turns[0].question, 'Why validate again?');
+    assert.equal(f.controller.state.turns[0].answer, '');
     assert.ok(stages.includes('recording')); assert.ok(stages.includes('transcription'));
     release(); await pending;
     assert.ok(stages.includes('voice')); assert.equal(f.controller.state.processing, null);
@@ -116,7 +119,7 @@ test('accept uses supplied handoff and handles more than three phases', async ()
     const f = setup(8); await start(f);
     assert.equal(f.controller.state.session.phases.length, 8);
     assert.equal(f.calls.find(c => c.path === '/api/sessions').body.referenceLessonId, undefined);
-    assert.match(f.calls[0].body.handoff, /synthetic coding replay/);
+    assert.match(f.calls[0].body.handoff, /prepared replay of a real local Codex build/i);
     assert.equal(f.controller.state.view, 'lesson'); assert.equal(f.media.playing, true);
 });
 test('coverage waits at Practice / Continue without generating or starting next clip', async () => {
@@ -156,6 +159,50 @@ test('unseen recorded question uses transcription and explicit exact-clip resume
     await f.controller.questionResume(); assert.equal(f.media.selected, 'lesson'); assert.equal(f.media.position, 12);
     assert.equal(f.calls.filter(c => c.path === '/api/ask').length, 1);
 });
+test('spoken follow-ups preserve conversation history and resume the original lesson once', async () => {
+    const f = setup(); await start(f);
+    let count = 0;
+    const original = f.api.request;
+    f.api.request = (path, body) => {
+        if (path === '/api/transcribe') return Promise.resolve({ text: ++count === 1 ? 'Why validate titles?' : 'What if the title is too long?' });
+        if (path === '/api/ask') return Promise.resolve({ kind: 'answer', answer: count === 1 ? 'The server is the trusted boundary.' : 'The API rejects titles above 120 characters.', contentId: `answer${count}`, resumePhaseId: 'p1' });
+        return original(path, body);
+    };
+    await f.controller.questionStart(); await f.controller.questionSend();
+    assert.equal(f.controller.state.turns.length, 1);
+    await f.controller.questionFollowup(); await f.controller.questionSend();
+    assert.deepEqual(f.controller.state.turns.map(turn => turn.question), ['Why validate titles?', 'What if the title is too long?']);
+    assert.equal(f.calls.filter(call => call.path.endsWith('/actions') && call.body.action === 'pause').length, 1);
+    await f.controller.questionResume();
+    assert.equal(f.controller.state.view, 'lesson'); assert.equal(f.media.selected, 'lesson');
+});
+test('canceling a follow-up retains the answered thread and stops capture', async () => {
+    const f = setup(); await start(f); await f.controller.questionStart(); await f.controller.questionSend();
+    await f.controller.questionFollowup(); f.controller.questionCancel();
+    assert.equal(f.controller.state.view, 'question');
+    assert.equal(f.controller.state.turns.length, 1);
+    assert.equal(f.media.capturing, false);
+});
+test('canceling a retried follow-up removes only its pending turn and ignores the late answer', async () => {
+    const f = setup(); await start(f); await f.controller.questionStart(); await f.controller.questionSend();
+    await f.controller.questionFollowup();
+    const original = f.api.request; let attempts = 0; let resolve;
+    f.api.request = (path, body) => {
+        if (path !== '/api/ask') { return original(path, body); }
+        if (++attempts === 1) { return Promise.reject(Object.assign(new Error('Try manually'), { retryable: true })); }
+        return new Promise(done => { resolve = done; });
+    };
+    await f.controller.questionSend();
+    assert.equal(f.controller.state.turns.length, 1);
+    const retry = f.controller.retry(); await settle();
+    assert.equal(f.controller.state.turns.length, 2);
+    f.controller.questionCancel();
+    assert.equal(f.controller.state.turns.length, 1);
+    resolve({ kind: 'answer', answer: 'Late answer', contentId: 'late', resumePhaseId: 'p1' }); await retry;
+    assert.equal(f.controller.state.turns.length, 1);
+    assert.equal(f.controller.state.turns[0].answer, 'The browser is not a trusted boundary.');
+    assert.equal(f.media.playing, false);
+});
 test('late microphone permission after Cancel cannot reopen recording', async () => {
     const f = setup(); await start(f);
     let resolve; f.media.startRecording = () => new Promise(r => { resolve = r; });
@@ -163,7 +210,94 @@ test('late microphone permission after Cancel cannot reopen recording', async ()
     await new Promise(r => setImmediate(r)); f.controller.questionCancel(); resolve(); await pending;
     assert.equal(f.controller.state.view, 'lesson'); assert.equal(f.controller.state.recording, 'idle');
 });
-test('speech failure still allows text coverage and recap', async () => {
+test('the same microphone control starts, sends and starts a follow-up without resuming the lesson', async () => {
+    const f = setup(); await start(f);
+    await f.controller.questionStart();
+    assert.equal(f.controller.state.recording, 'recording');
+    await f.controller.questionStart();
+    assert.equal(f.controller.state.turns.length, 1);
+    assert.equal(f.controller.state.turns[0].answer, 'The browser is not a trusted boundary.');
+    assert.equal(f.controller.state.recording, 'idle');
+    await f.controller.questionStart();
+    assert.equal(f.controller.state.recording, 'recording');
+    assert.equal(f.media.playing, false);
+    assert.equal(f.media.position, 12);
+    assert.equal(f.calls.filter(call => call.body?.action === 'resume').length, 0);
+});
+test('microphone startup failure offers another recording without a stuck permission state', async () => {
+    const f = setup(); await start(f);
+    f.media.startRecording = async () => { throw new Error('Microphone access was not allowed.'); };
+    await f.controller.questionStart();
+    assert.match(f.controller.state.error, /Microphone/);
+    assert.equal(f.controller.state.recording, 'idle');
+    f.media.startRecording = async () => { f.media.capturing = true; };
+    await f.controller.questionStart();
+    assert.equal(f.controller.state.error, '');
+    assert.equal(f.controller.state.recording, 'recording');
+    assert.equal(f.media.capturing, true);
+});
+test('an ended answer asks for explicit return without advancing or auto-resuming the lesson', async () => {
+    const f = setup(); await start(f); await f.controller.questionStart(); await f.controller.questionSend();
+    assert.equal(f.controller.state.answerFinished, false);
+    const calls = f.calls.length;
+    f.media.playing = false; f.media.listener('ended');
+    assert.equal(f.controller.state.answerFinished, true);
+    assert.equal(f.controller.state.view, 'question');
+    assert.equal(f.calls.length, calls);
+    await f.controller.questionResume();
+    assert.equal(f.controller.state.view, 'lesson');
+    assert.equal(f.media.selected, 'lesson'); assert.equal(f.media.position, 12);
+});
+for (const outcome of ['resolve', 'reject']) {
+    test(`an old microphone ${outcome} cannot cancel a newer recording`, async () => {
+        const f = setup(); await start(f);
+        let resolve; let reject;
+        f.media.startRecording = () => new Promise((yes, no) => { resolve = yes; reject = no; });
+        const pending = f.controller.questionStart(); await settle();
+        f.controller.questionCancel();
+        f.media.startRecording = async () => { f.media.capturing = true; };
+        await f.controller.questionStart();
+        if (outcome === 'resolve') { resolve(); } else { reject(new Error('Old permission denied.')); }
+        await pending;
+        assert.equal(f.media.capturing, true);
+        assert.equal(f.controller.state.recording, 'recording');
+    });
+}
+test('a needs-sources answer stays visible as a limitation rather than implying spoken playback', async () => {
+    const f = setup(); await start(f); await f.controller.questionStart();
+    const original = f.api.request;
+    f.api.request = (path, body) => path === '/api/ask' ? Promise.resolve({ kind: 'needs_sources' }) : original(path, body);
+    const before = f.calls.filter(call => call.path === '/api/speech').length;
+    await f.controller.questionSend();
+    assert.match(f.controller.state.error, /cannot inspect/i);
+    assert.equal(f.controller.state.answer, '');
+    assert.equal(f.media.playing, false);
+    assert.equal(f.calls.filter(call => call.path === '/api/speech').length, before);
+});
+test('failed follow-up speech cannot display or replay the previous answer clip', async () => {
+    const f = setup();
+    const realMedia = new BrowserMedia({ clearTimeout,
+        Audio: class extends EventTarget {
+            currentTime = 0; duration = 30; ended = false;
+            async play() {} pause() {} load() {} removeAttribute() {}
+        } });
+    realMedia.startRecording = async () => {};
+    realMedia.stopRecording = () => {};
+    realMedia.recordingData = async () => 'YWJjZGVm';
+    f.controller.dispose(); f.controller = new DemoController(f.api, realMedia);
+    await start(f); await f.controller.questionStart(); await f.controller.questionSend();
+    assert.equal(realMedia.caption, 'The browser is not a trusted boundary.');
+    const original = f.api.request;
+    f.api.request = (path, body) => path === '/api/ask'
+        ? Promise.resolve({ kind: 'answer', answer: 'A completely different follow-up answer.', contentId: 'answer2', resumePhaseId: 'p1' })
+        : path === '/api/speech' ? Promise.reject(Object.assign(new Error('Speech unavailable.'), { retryable: true })) : original(path, body);
+    await f.controller.questionStart(); await f.controller.questionSend();
+    assert.equal(f.controller.state.answer, 'A completely different follow-up answer.');
+    assert.equal(realMedia.caption, '');
+    assert.equal(realMedia.tracks.has('answer'), false);
+    assert.match(f.controller.state.error, /Speech unavailable/);
+});
+test('speech failure still allows coverage and recap', async () => {
     const f = setup(1); const original = f.api.request;
     f.api.request = (path, body) => path === '/api/speech' ? Promise.reject(Object.assign(new Error('Speech unavailable.'), { retryable: true })) : original(path, body);
     await start(f); assert.match(f.controller.state.explanation, /server validates/);
@@ -177,7 +311,7 @@ test('duplicate sends share one operation and canceled answers cannot autoplay',
     const first = f.controller.questionSend(); await f.controller.questionSend();
     await new Promise(r => setImmediate(r)); f.controller.questionCancel();
     resolve({ kind: 'answer', answer: 'Late answer', contentId: 'late', resumePhaseId: 'p1' }); await first;
-    assert.equal(f.controller.state.answer, ''); assert.equal(f.media.playing, false);
+    assert.equal(f.controller.state.answer, ''); assert.equal(f.controller.state.turns.length, 0); assert.equal(f.media.playing, false);
 });
 test('skipping a paused phase resumes server state before next spoken phase', async () => {
     const f = setup(); await start(f); await f.controller.playPause();
