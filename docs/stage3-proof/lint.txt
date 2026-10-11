@@ -1,0 +1,3 @@
+yarn run v1.22.22
+$ eslint --ext js,jsx,ts,tsx src
+Done in 2.85s.

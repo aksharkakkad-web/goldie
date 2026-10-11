@@ -8,9 +8,9 @@
  ********************************************************************************/
 
 :root {
-    --theia-branding-logo: url(../icons/TheiaIDE.png);
-    --theia-branding-icon: url(../icons/512-512.png);
-    --theia-branding-accent: #5088e7;
+    --theia-branding-logo: url(../icons/goldie/icon-dark.png);
+    --theia-branding-icon: url(../icons/goldie/icon-dark.png);
+    --theia-branding-accent: #dfaa22;
 }
 
 body[data-theia-branding="next"] {
@@ -179,7 +179,7 @@ ul.theia-aboutExtensions {
 .goldie-widget { overflow: auto; background: var(--theia-sideBar-background); color: var(--theia-sideBar-foreground); }
 .goldie-panel { padding: 20px; box-sizing: border-box; min-width: 0; overflow-wrap: anywhere; }
 .goldie-panel-header { display: flex; align-items: center; gap: 10px; font-size: 16px; margin-bottom: 28px; }
-.goldie-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: #f1bc58; color: #302413; font-weight: 700; }
+.goldie-mark { display: grid; place-items: center; width: 28px; height: 28px; background: url(../icons/goldie/icon-dark.png) center/contain no-repeat; font-size: 0; }
 .goldie-close { margin-left: auto; background: transparent; color: inherit; border: none; font-size: 22px; cursor: pointer; }
 .goldie-close:focus-visible { outline: 1px solid var(--theia-focusBorder); }
 .goldie-status { display: inline-flex; gap: 6px; font-size: 12px; margin-bottom: 10px; color: var(--theia-descriptionForeground); }

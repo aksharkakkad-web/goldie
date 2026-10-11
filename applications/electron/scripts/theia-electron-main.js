@@ -45,6 +45,11 @@ app.setName(require(packageJsonPath).productName);
 if (!app.isPackaged) {
     process.env.THEIA_NO_SPLASH = '1';
 }
+if (process.platform === 'darwin') {
+    app.whenReady().then(() => {
+        app.dock.setIcon(path.resolve(__dirname, '../resources/goldie/icon-dark.png'));
+    });
+}
 
 // Handover to the auto-generated electron application handler.
 require('../lib/backend/electron-main.js');

@@ -229,4 +229,20 @@ explicit handoff/profile loading, merged in PR #3. Stage 3 backend work adds
 conversational answers, local transcription and practice; native integration remains
 a separate gate. Onboarding and live Codex handoffs remain future work.
 See `docs/stage1-api.md` for exact contracts and `docs/goldie-stage1.md` for the native
-workflow and verified integration status. The human together-run checkpoint remains open.
+workflow and verified integration status. Stage 1 was merged in PR #2 and Stage 2
+in PR #3; the human together-run checkpoint remains open.
+
+
+### Stage 3 development checkpoint
+
+Goldie setup/details now has a **Microphone check**: Test microphone → Stop recording → local preview → Discard. Capture stops after 30 seconds; cancel, window blur, panel/drawer closure and navigation discard it. Nothing is uploaded by this check. Backend voice/practice contracts and RPC methods are implemented; use `docs/stage3-integration.md` to wire them. Ordinary voice Q&A and per-phase practice are not integrated yet; see `docs/superpowers/specs/2026-10-10-stage-3-implementation-spec.md`. The existing check can capture before acceptance and End session does not cancel it: those lifecycle gaps must be fixed before the Stage 3 product gate.
+
+Fresh focused verification:
+
+```sh
+node --test theia-extensions/product/test/goldie-recorder.test.cjs theia-extensions/product/test/goldie-practice.test.cjs theia-extensions/product/test/goldie-recording-widget.test.cjs theia-extensions/product/test/goldie-lesson.test.cjs theia-extensions/product/test/goldie-orb-audio.test.cjs
+yarn --cwd theia-extensions/product build
+yarn --cwd theia-extensions/product lint
+```
+
+Use the pinned PATH documented above. Native proof lives in `docs/stage3-proof`. Keep the existing `goldie` tmux watch/backend/ide windows running. If Reload leaves an empty shell, quit Electron and rerun the documented Electron start command; do not start duplicate watchers.

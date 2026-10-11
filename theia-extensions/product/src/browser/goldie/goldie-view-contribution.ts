@@ -28,7 +28,7 @@ export class GoldieViewContribution extends AbstractViewContribution<GoldieWidge
         const restored = this.tryGetWidget()?.isAttached;
         const widget = await this.openView({ reveal: true, activate: false });
         if (!restored && widget.node.getBoundingClientRect().width < 300) {
-            this.shell.resize(340, 'right');
+            this.shell.resize(304, 'right');
         }
     }
 

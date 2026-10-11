@@ -4,9 +4,19 @@ Date: October 10–11, 2026. Branch: `codex/stage-3-backend`, based on merged ma
 
 ## Status and boundary
 
-Backend implementation is present locally. **Full backend sign-off remains open** because the complete live ElevenLabs spoken journey could not finish with the configured credits. **Overall Stage 3 is not complete**: Rishit still owns click-to-toggle recording, voice-only composer, practice UI, playback/controller integration and the joint merged-main walkthrough. Existing renderer tests cover Stage 0–2 behavior, not those unimplemented Stage 3 controls. Nothing in this task has been pushed or merged.
+Backend implementation is present. **Full backend sign-off remains open** because the complete live ElevenLabs spoken journey could not finish with the configured credits. **Overall Stage 3 is not complete**: Rishit's merged frontend foundations provide capture and local practice components, but voice-only sending and phase-practice/controller integration remain open, along with the joint merged-main walkthrough. The initial backend verification below predates frontend integration; publication status must be confirmed from GitHub rather than inferred from this test report.
 
-## Checks
+## Combined frontend/backend checkpoint
+
+The delivery candidate incorporates Rishit's `4794cfd` frontend checkpoint and the backend commits through `3e77d1b`. The only Git conflict was setup documentation; both tracks' setup instructions are preserved. No renderer feature fixes are included in this backend publication.
+
+Product review confirmed four remaining client integration gaps: recordings only preview locally while ordinary questions remain typed; practice components are not connected and coverage immediately plays the next phase; ask omits stable request IDs, allowing a lost response plus Retry to generate twice; and the microphone check can start before acceptance and is not stopped by End session. Separate lesson/answer clips and explicit original-clip resume are compatible with the backend design.
+
+Before preparing this delivery, a temporary combined source snapshot compiled and passed **256 scoped checks** (102 backend, 15 contracts, 138 product, 1 health). A separate controlled-provider diagnostic exercised the actual localhost HTTP backend and Node transport with the merged controller, reproducing duplicate answer generation after a lost response and immediate next-phase playback. No cloud provider or credentials were used in that diagnostic. These results do not establish native Stage 3 completion.
+
+Fresh delivery checks after integrating `4794cfd` and resolving the documentation conflict, using pinned Node 24.21.0 / Yarn 1.22.22: `yarn test:stage3` **256 pass**, `yarn lint` all seven workspaces pass with existing warnings, `yarn electron build` zero errors, and both staged/unstaged `git diff --check` pass. No paid live checks or native walkthrough were repeated for publication. The known broad packaged-preview test limitation below remains open.
+
+## Initial backend-only checks (before frontend checkpoint)
 
 - `yarn test:stage3`: **239 pass** (102 backend, 15 contracts, 121 product, 1 standalone health). Tests cover question recovery/collision/concurrency/staleness, frozen context and last-six history, practice persistence/eligibility/closure, V1/V2 migration, actual FFmpeg media limits/silence, controlled local Whisper failures/timeout/cleanup, large-upload RPC and safe error codecs.
 - `yarn lint`: all seven workspaces pass, with existing upstream deprecation/color/no-enabled-rule warnings.

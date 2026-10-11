@@ -1,6 +1,6 @@
 # Stage 3 backend and native integration contract
 
-Status: local implementation under verification. Rishit's recording/controller UI and joint merged-main walkthrough are separate gates. The existing renderer still has Stage 2 typed Q&A until that work lands. Do not describe it as a completed voice-only product.
+Status: backend implementation and Rishit's frontend foundations are present in the integration candidate. Voice sending and phase-practice progression are not wired; the existing renderer still has Stage 2 typed Q&A and a local-only microphone check. Use the contracts below for the remaining client integration. Full live speech verification and the joint merged-main walkthrough remain open. Do not describe this checkpoint as a completed voice-only product.
 
 ## Voice conversation sequence
 

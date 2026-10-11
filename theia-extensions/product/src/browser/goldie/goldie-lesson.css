@@ -439,3 +439,253 @@
     background: var(--theia-dropdown-background); color: var(--theia-dropdown-foreground); font: inherit;
 }
 .goldie-context-controls select:disabled { color: var(--theia-disabledForeground); }
+
+/* The default panel is a quiet voice companion. Full lesson text and setup stay in the details drawer. */
+.goldie-orb-shell {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: #050608;
+    color: #f1f2f4;
+}
+
+.goldie-orb-shell .goldie-panel-header {
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 0 8px 0 13px;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(5, 6, 8, 0.94);
+}
+
+.goldie-orb-shell .goldie-panel-header strong {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.goldie-orb-mini {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: conic-gradient(from 210deg, #4769ff, #9d28fa 42%, #ff6234 72%, #4769ff);
+    box-shadow: 0 0 10px rgba(120, 75, 255, 0.32);
+}
+
+.goldie-header-action,
+.goldie-orb-shell .goldie-close {
+    display: grid;
+    width: 30px;
+    min-height: 30px;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #858994;
+    cursor: pointer;
+}
+
+.goldie-header-action { margin-left: auto; }
+.goldie-orb-shell .goldie-close { margin-left: 0; font-size: 18px; }
+.goldie-header-action:hover,
+.goldie-header-action.active,
+.goldie-orb-shell .goldie-close:hover { background: #15171b; color: #f0f1f3; }
+
+.goldie-orb-stage {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    padding: 22px 16px 96px;
+    background: radial-gradient(circle at 50% 45%, rgba(94, 55, 165, 0.055), transparent 38%);
+}
+
+.goldie-orb-visual {
+    position: relative;
+    display: block;
+    width: min(248px, calc(100cqw - 28px));
+    max-width: 100%;
+    aspect-ratio: 1;
+    isolation: isolate;
+}
+
+.goldie-gradient-orb {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 50%;
+    background: #050608;
+    -webkit-mask-image: radial-gradient(circle, #000 0 56%, transparent 78%);
+    mask-image: radial-gradient(circle, #000 0 56%, transparent 78%);
+}
+
+.goldie-orb-halo {
+    position: absolute;
+    inset: 21%;
+    z-index: -1;
+    border-radius: 50%;
+    background: rgba(96, 69, 255, 0.2);
+    filter: blur(42px);
+    opacity: 0.4;
+    transition: opacity 240ms ease, transform 240ms ease;
+}
+
+.goldie-orb-visual.speaking .goldie-orb-halo {
+    opacity: 0.78;
+    transform: scale(1.12);
+}
+
+.goldie-gradient-orb-fallback {
+    background:
+        radial-gradient(circle at 50% 50%, #050608 0 12%, transparent 31%),
+        radial-gradient(circle at 34% 36%, #415eff 0, transparent 34%),
+        radial-gradient(circle at 70% 69%, #ff6336 0, transparent 34%),
+        conic-gradient(from 210deg, #3d5dff, #a12cf4 43%, #ff6434 72%, #3d5dff);
+}
+
+.goldie-orb-markers {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 10px;
+    margin-top: 16px;
+}
+
+.goldie-orb-markers span {
+    width: 13px;
+    height: 2px;
+    border-radius: 2px;
+    background: #282b31;
+}
+
+.goldie-orb-markers span.active { background: #8c6ee8; }
+.goldie-orb-markers span.complete { background: #515561; }
+
+.goldie-orb-controls {
+    position: absolute;
+    right: 0;
+    bottom: 22px;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 13px;
+}
+
+.goldie-orb-control {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    place-items: center;
+    border: 1px solid #2d3038;
+    border-radius: 50%;
+    background: #101115;
+    color: #a0a4ae;
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.goldie-orb-control svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.goldie-orb-control:hover:not(:disabled) {
+    border-color: #555a66;
+    background: #17191e;
+    color: #f0f1f3;
+}
+
+.goldie-orb-control:active:not(:disabled) { transform: translateY(1px); }
+.goldie-orb-control:disabled { color: #4e5159; cursor: default; opacity: 0.72; }
+
+.goldie-orb-primary {
+    width: 50px;
+    height: 50px;
+    border-color: #d9dce2;
+    background: #eef0f4;
+    color: #111216;
+    box-shadow: 0 7px 24px rgba(0, 0, 0, 0.38);
+}
+
+.goldie-orb-primary:hover:not(:disabled) { border-color: #fff; background: #fff; color: #090a0c; }
+.goldie-orb-primary.playing { border-color: #8274c7; background: #6e61ac; color: #fff; }
+
+.goldie-orb-error {
+    position: absolute;
+    right: 12px;
+    bottom: 88px;
+    left: 12px;
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 7px;
+    min-height: 37px;
+    padding: 6px 7px 6px 10px;
+    border: 1px solid #49343b;
+    border-radius: 6px;
+    background: #171216;
+    color: #d7cfd3;
+    font-size: 10px;
+}
+
+.goldie-orb-error > span:first-child { color: #f08a91; }
+.goldie-orb-error button {
+    min-height: 25px;
+    padding: 0 7px;
+    border: 1px solid #523d44;
+    border-radius: 4px;
+    background: #21181d;
+    color: #e6dde1;
+    font-size: 9px;
+    cursor: pointer;
+}
+
+.goldie-details-drawer {
+    position: absolute;
+    z-index: 3;
+    inset: 42px 0 0;
+    overflow: hidden;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    background: var(--theia-sideBar-background, #111216);
+    color: var(--theia-sideBar-foreground, #d8dade);
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.34);
+}
+
+.goldie-details-drawer .goldie-panel-body { height: 100%; }
+
+@container (max-width: 280px) {
+    .goldie-orb-stage { padding-right: 10px; padding-left: 10px; }
+    .goldie-orb-visual { width: min(210px, calc(100cqw - 18px)); }
+    .goldie-orb-error { grid-template-columns: auto 1fr auto; }
+    .goldie-orb-error > button:last-child { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .goldie-orb-control { transition: none; }
+    .goldie-orb-halo { transition: none; }
+}
+
+/* Stage 3 memory-only microphone check, before backend contract integration. */
+.goldie-microphone-check { padding: 12px; border: 1px solid var(--theia-widget-border); border-radius: 8px; margin-bottom: 16px; }
+.goldie-microphone-check h3 { margin: 0 0 8px; }
+.goldie-microphone-check .theia-button { margin: 4px 6px 4px 0; }
+.goldie-microphone-check audio { display: block; width: 100%; margin-top: 8px; }
+.goldie-practice-view textarea { box-sizing: border-box; width: 100%; margin-top: 8px; color: var(--theia-input-foreground); background: var(--theia-input-background); border: 1px solid var(--theia-input-border); padding: 8px; }

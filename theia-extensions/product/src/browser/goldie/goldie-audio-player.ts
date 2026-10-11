@@ -1,10 +1,12 @@
 // Copyright (C) 2026 Goldie contributors. SPDX-License-Identifier: MIT
 import type { GoldieSpeech } from '../../common/goldie-service';
+import { smoothAudioLevel, waveformLevel } from './goldie-audio-level';
 
 export type GoldieAudioState = 'idle' | 'playing' | 'paused' | 'ended' | 'error';
 export type GoldieAudioTrack = 'lesson' | 'answer';
 export interface GoldieAudioProgress { position: number; duration: number; }
 export interface GoldieAudioAdapter {
+    readonly audioLevelRef?: { current: number };
     subscribe(listener: (state: GoldieAudioState, track: GoldieAudioTrack, progress?: GoldieAudioProgress) => void): () => void;
     load(track: GoldieAudioTrack, speech: GoldieSpeech): void;
     select(track: GoldieAudioTrack): void;
@@ -16,9 +18,16 @@ export interface GoldieAudioAdapter {
 
 /** Retain the lesson element while an answer plays, including its playback position. */
 export class GoldieAudioPlayer implements GoldieAudioAdapter {
-    private readonly tracks = new Map<GoldieAudioTrack, { audio: HTMLAudioElement; url: string }>();
+    readonly audioLevelRef = { current: 0 };
+    private readonly tracks = new Map<GoldieAudioTrack, {
+        audio: HTMLAudioElement; url: string; source?: MediaElementAudioSourceNode; analyser?: AnalyserNode; samples?: Float32Array<ArrayBuffer>;
+    }>();
     private readonly listeners = new Set<(state: GoldieAudioState, track: GoldieAudioTrack, progress?: GoldieAudioProgress) => void>();
     private active: GoldieAudioTrack = 'lesson';
+    private context?: AudioContext;
+    private meterFrame?: number;
+    private disposed = false;
+    private playbackGeneration = 0;
 
     subscribe(listener: (state: GoldieAudioState, track: GoldieAudioTrack, progress?: GoldieAudioProgress) => void): () => void {
         this.listeners.add(listener);
@@ -45,6 +54,9 @@ export class GoldieAudioPlayer implements GoldieAudioAdapter {
         for (const [event, state] of [['play', 'playing'], ['pause', 'paused'], ['ended', 'ended'], ['error', 'error']] as const) {
             audio.addEventListener(event, () => {
                 currentState = state;
+                if (this.active === track && this.tracks.get(track)?.audio === audio) {
+                    if (state === 'playing') { this.startMeter(); } else { this.stopMeter(); }
+                }
                 notify();
             });
         }
@@ -57,24 +69,70 @@ export class GoldieAudioPlayer implements GoldieAudioAdapter {
         this.active = track;
     }
     async play(): Promise<void> {
-        const audio = this.tracks.get(this.active)?.audio;
+        const entry = this.tracks.get(this.active);
+        const audio = entry?.audio;
         if (!audio) { throw new Error('No speech is ready. Try Play again.'); }
+        if (this.disposed) { return; }
+        const generation = ++this.playbackGeneration;
+        if (typeof globalThis.AudioContext === 'function') {
+            this.context ??= new AudioContext();
+            if (this.context.state === 'suspended') { await this.context.resume(); }
+            if (this.disposed || generation !== this.playbackGeneration || this.tracks.get(this.active) !== entry) { return; }
+            if (!entry!.source) {
+                // The source reroutes this element's output. Connect once to a single audible path.
+                const analyser = this.context.createAnalyser();
+                analyser.fftSize = 1024;
+                const source = this.context.createMediaElementSource(audio);
+                source.connect(analyser);
+                analyser.connect(this.context.destination);
+                entry!.source = source;
+                entry!.analyser = analyser;
+                entry!.samples = new Float32Array(analyser.fftSize);
+            }
+        }
         if (audio.ended) { audio.currentTime = 0; }
         await audio.play();
     }
-    pause(): void { this.tracks.get(this.active)?.audio.pause(); }
+    pause(): void { this.playbackGeneration++; this.stopMeter(); this.tracks.get(this.active)?.audio.pause(); }
     clear(): void {
         this.release('lesson');
         this.release('answer');
     }
-    dispose(): void { this.listeners.clear(); this.clear(); }
+    dispose(): void {
+        this.disposed = true;
+        this.listeners.clear(); this.clear(); this.stopMeter();
+        this.context?.close().catch(() => undefined);
+        this.context = undefined;
+    }
+    private startMeter(): void {
+        this.stopMeter();
+        const entry = this.tracks.get(this.active);
+        if (!entry?.analyser || !entry.samples || typeof requestAnimationFrame !== 'function') { return; }
+        let previous: number | undefined;
+        const measure = (time: number): void => {
+            if (this.disposed || this.tracks.get(this.active) !== entry) { this.stopMeter(); return; }
+            entry.analyser!.getFloatTimeDomainData(entry.samples!);
+            const delta = previous === undefined ? 1 / 60 : Math.min(0.1, Math.max(0, (time - previous) / 1000));
+            previous = time;
+            this.audioLevelRef.current = smoothAudioLevel(this.audioLevelRef.current, waveformLevel(entry.samples!), delta);
+            this.meterFrame = requestAnimationFrame(measure);
+        };
+        this.meterFrame = requestAnimationFrame(measure);
+    }
+    private stopMeter(): void {
+        if (this.meterFrame !== undefined) { cancelAnimationFrame(this.meterFrame); this.meterFrame = undefined; }
+        this.audioLevelRef.current = 0;
+    }
     private release(track: GoldieAudioTrack): void {
         const entry = this.tracks.get(track);
         if (!entry) { return; }
+        if (this.active === track) { this.stopMeter(); }
         this.tracks.delete(track);
         entry.audio.pause();
         entry.audio.removeAttribute('src');
         entry.audio.load();
+        entry.source?.disconnect();
+        entry.analyser?.disconnect();
         URL.revokeObjectURL(entry.url);
     }
 }
