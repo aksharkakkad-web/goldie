@@ -32,5 +32,6 @@ test('real practice component renders typed response and reveals no answer befor
     assert.match(render(), /Show model answer/); assert.doesNotMatch(render(), /Because 0/);
     practice.answer('Local reasoning'); practice.reveal();
     assert.match(render(), /Local reasoning/); assert.match(render(), /Because 0/);
+    assert.match(render(), /15\/2000/); assert.doesNotMatch(render(), /Show model answer/);
     assert.match(render(), /Exit practice &amp; continue lesson/); assert.doesNotMatch(render(), /<audio/);
 });

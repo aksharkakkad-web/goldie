@@ -2,6 +2,20 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { GoldieRecorder } = require('../lib/browser/goldie/goldie-recorder');
+test('input monitor stops on cancellation and late measurements cannot restore capture', async () => {
+    let report; let released = 0;
+    const recorder = new GoldieRecorder({
+        getStream: async () => ({ getTracks: () => [{ stop() {} }] }),
+        createRecorder: () => ({ start() {}, stop() {}, state: 'inactive', mimeType: 'audio/webm' }),
+        schedule: () => 1, clear() {},
+        monitorInput: (_stream, listener) => { report = listener; return () => released++; }
+    });
+    await recorder.start(); report(0.4, 3);
+    assert.equal(recorder.state.inputLevel, 0.4); assert.equal(recorder.state.elapsedSeconds, 3);
+    recorder.cancel(); assert.equal(released, 1); report(0.8, 8);
+    assert.equal(recorder.state.status, 'idle'); assert.equal(recorder.state.inputLevel, undefined);
+    recorder.dispose(); assert.equal(released, 1);
+});
 function harness(getStream) {
     let stopped = 0, requests = 0, creates = 0;
     const stream = { getTracks: () => [{ stop() { stopped++; } }] };

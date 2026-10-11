@@ -72,6 +72,16 @@ function setup(count = 3, storage = memory()) {
 async function start(controller) { await controller.checkOffer(); await controller.acceptOffer(); }
 function clip() { return MediaElement.instances.at(-1); }
 
+test('explicit Replay rewinds the same section without generating or changing phase progress', async () => {
+    const { controller, calls } = setup(); await start(controller);
+    const original = clip(); original.currentTime = 21.5;
+    await controller.playPause();
+    await controller.replayPhase();
+    assert.equal(clip(), original); assert.equal(original.currentTime, 0);
+    assert.equal(controller.state.phaseIndex, 0); assert.deepEqual(controller.state.session.completedIds, []);
+    assert.equal(calls.teach.length, 1); assert.equal(calls.speech.length, 1); controller.dispose();
+});
+
 test('explicit selector offers without speech and decline never accepts', async () => {
     const { controller, calls } = setup(); await controller.checkOffer();
     assert.equal(calls.offer[0].referenceLessonId, undefined); assert.equal(calls.offer[0].revision, 1);
@@ -203,7 +213,7 @@ test('real player publishes current clip timing and ignores released clip update
     await controller.skipPhase(); old.currentTime = 20; old.emit('timeupdate'); assert.equal(controller.state.audioPosition, 0); controller.dispose();
 });
 
-test('real widget presents architecture estimate, conceptual scope, explicit text completion and supported questions', async () => {
+test('real widget preserves offer and lesson controls without transcript or explanation bodies', async () => {
     const { renderWidget } = require('./goldie-widget-test-utils.cjs');
     const { controller } = setup(); await controller.checkOffer();
     const clean = renderWidget(controller.state); assert.doesNotMatch(clean, /handoff and knowledge level/i);
@@ -212,12 +222,14 @@ test('real widget presents architecture estimate, conceptual scope, explicit tex
     await controller.acceptOffer(); const lesson = renderWidget(controller.state);
     assert.doesNotMatch(lesson, /Explain more/);
     const lessonDetails = renderWidget(controller.state, { detailsOpen: true });
-    assert.match(lessonDetails, /Explain more/); assert.match(lessonDetails, /Mark read/);
+    assert.match(lessonDetails, /Explain more/); assert.match(lessonDetails, /Mark covered/);
+    assert.doesNotMatch(lessonDetails, /Explain p0/);
     assert.match(lessonDetails, /Conceptual/); assert.doesNotMatch(lessonDetails, /mastered/i);
     await controller.askQuestion('What is an API?'); const answer = renderWidget(controller.state);
     assert.doesNotMatch(answer, /Supported questions/);
     const answerDetails = renderWidget(controller.state, { detailsOpen: true });
-    assert.match(answerDetails, /You could ask next/); assert.match(answerDetails, /What is an API/); controller.dispose();
+    assert.doesNotMatch(answerDetails, /You could ask next|What is an API/);
+    assert.match(answerDetails, /Pause answer audio|Play answer audio/); controller.dispose();
 });
 
 test('new narrow dock gets readable width while restored user width is respected', async () => {
@@ -561,4 +573,18 @@ test('lost transcription retries one request ID; duplicate Send and end suppress
     const pending=controller.submitVoiceQuestion(recording()); await tick(); await controller.submitVoiceQuestion(recording());
     await controller.endSession(); gate.resolve({text:'Late text'}); await pending;
     assert.equal(calls.ask.length,1); assert.equal(controller.state.view,'recap'); controller.dispose();
+});
+test('nonverbal Whisper annotations never generate an answer and preserve lesson position', async () => {
+    const {controller, service, calls}=setup(); await start(controller); const original=clip(); original.currentTime=12.5;
+    service.transcribe=async()=>({text:'(indistinct) [MUSIC PLAYING]'});
+    await controller.prepareVoiceQuestion(); await controller.submitVoiceQuestion(recording());
+    assert.equal(calls.ask.length,0); assert.equal(original.currentTime,12.5); assert.equal(controller.state.retryable,false);
+    assert.match(controller.state.error,/clear question/); controller.dispose();
+});
+test('a real question in parentheses remains a valid voice intent', async () => {
+    const {controller, service, calls}=setup(); await start(controller);
+    service.transcribe=async()=>({text:'(Why validate the title on the server?)'});
+    await controller.prepareVoiceQuestion(); await controller.submitVoiceQuestion(recording());
+    assert.equal(calls.ask.length,1); assert.equal(calls.ask[0].question,'(Why validate the title on the server?)');
+    assert.equal(controller.state.error,undefined); controller.dispose();
 });

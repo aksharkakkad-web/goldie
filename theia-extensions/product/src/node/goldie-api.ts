@@ -12,6 +12,7 @@ import { ApplicationError } from '@theia/core/lib/common/application-error';
 import { GOLDIE_NONRETRYABLE_ERROR_CODE, GOLDIE_RETRYABLE_ERROR_CODE, GoldieService, GoldieSpeech } from '../common/goldie-service';
 import { checkGoldieHealth } from './goldie-health';
 import { loadGoldieHandoff } from './goldie-context';
+import { inspectGoldieWorkspaceHandoff } from './goldie-workspace-handoff';
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
@@ -235,6 +236,7 @@ export function createGoldieApi(address: string, options: GoldieApiOptions = {})
 
     return {
         loadHandoff: loadGoldieHandoff,
+        inspectWorkspaceHandoff: inspectGoldieWorkspaceHandoff,
         checkHealth: () => checkGoldieHealth(address),
         offer: async input => {
             const offer = await json('/api/offer', input, OfferRequestSchema, OfferResponseSchema, teachingTimeout);

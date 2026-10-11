@@ -128,9 +128,22 @@ export class GoldieLessonController {
         this.retryWork = undefined;
         this.update({ context: snapshot, error: undefined, retryable: false });
     }
+    /** Canonical workspace revisions are authored by Codex, not invented on read. */
+    setWorkspaceContext(snapshot: GoldieContextSnapshot): void {
+        if (!this.canChangeContext) { throw new Error('Finish the current lesson before learning from newer context.'); }
+        const parsed = parseGoldieContext(snapshot);
+        try { this.storage?.setItem(contextKey, JSON.stringify(parsed)); } catch { throw new Error('Goldie could not save this workspace context.'); }
+        if (this.current.view === 'recap') { this.clearTerminal(); }
+        this.revision = parsed.revision;
+        this.generation++;
+        this.retryWork = undefined;
+        this.update({ context: parsed, error: undefined, retryable: false });
+    }
     setKnowledgeLevel(level: KnowledgeLevel): void {
         const snapshot = this.current.context;
-        if (snapshot) { this.setContext(snapshot.handoff, level, snapshot.name); }
+        if (snapshot?.projectId.startsWith('goldie-workspace-')) {
+            this.setWorkspaceContext(createGoldieContext(snapshot.handoff, level, snapshot.revision, snapshot.name, snapshot.projectId));
+        } else if (snapshot) { this.setContext(snapshot.handoff, level, snapshot.name); }
     }
     private clearTerminal(): void {
         // Save the tombstone before clearing in-memory recovery. Failed storage preserves the recap.
@@ -243,6 +256,21 @@ export class GoldieLessonController {
     async skipPhase(): Promise<void> { await this.advance('skip'); }
     async markFamiliar(): Promise<void> { await this.advance('already_know'); }
     async nextPhase(): Promise<void> { await this.advance('phase_completed'); }
+    async replayPhase(): Promise<void> {
+        if (this.current.view !== 'lesson' || !this.canCommand()) { return; }
+        await this.run(async token => {
+            if (this.current.session?.status === 'paused') { await this.sendAction('resume', token); }
+            if (!this.valid(token)) { return; }
+            if (!this.current.explanation) { await this.teach(token); } else if (!this.lessonAudioReady) {
+                await this.speak(this.current.explanation.contentId, 'lesson', token);
+            } else {
+                this.audio.select('lesson');
+                if (!this.audio.seek) { throw new Error('Replay is unavailable.'); }
+                this.audio.seek(0);
+                await this.audio.play();
+            }
+        });
+    }
     /** Pause before requesting the microphone; leave the original clip and timestamp intact. */
     async prepareVoiceQuestion(): Promise<boolean> {
         if (!this.canCommand() || !this.phase || !this.current.session || this.terminal(this.current.session)
@@ -253,6 +281,12 @@ export class GoldieLessonController {
             if (this.current.session?.status !== 'paused') { await this.sendAction('pause', token); }
         });
         return !this.disposed && this.current.view === 'question' && !this.current.error && !this.pendingAction && !this.pendingClosure;
+    }
+    cancelWorkspaceOffer(): void {
+        if (this.current.session || (this.current.operation !== 'offer' && this.current.view !== 'offer')) { return; }
+        this.generation++;
+        this.retryWork = undefined;
+        this.update({ view: 'idle', busy: false, operation: undefined, offer: undefined, error: undefined, retryable: false });
     }
     cancelVoiceQuestion(): void {
         this.generation++;
@@ -289,6 +323,12 @@ export class GoldieLessonController {
                 if (!this.valid(token)) { return; }
                 question = result.text;
                 this.update({ question });
+            }
+            const recognizedSpeech = question.replace(/\[(?:music(?: playing)?|silence|blank_audio|inaudible|indistinct|applause)\]/gi, '')
+                .replace(/\((?:indistinct|inaudible|unintelligible|silence|music(?: playing)?)\)/gi, '').trim();
+            if (!recognizedSpeech) {
+                throw Object.assign(new Error('No clear question was recognized. Record again in a quiet space.'),
+                    { code: GOLDIE_NONRETRYABLE_ERROR_CODE });
             }
             if (!answer) {
                 this.update({ operation: 'ask' });

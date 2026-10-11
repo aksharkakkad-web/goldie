@@ -19,6 +19,8 @@ import { GoldieLessonController, GoldieLessonState, GoldiePhaseStatus } from './
 import { GradientOrb, GradientOrbLevelRef } from './gradient-orb';
 import { GoldieRecorder, GoldieRecorderState } from './goldie-recorder';
 import { GoldiePracticeView } from './goldie-practice-view';
+import { estimatedSentence } from './goldie-captions';
+import { GoldieWorkspaceConnection } from './goldie-workspace-connection';
 import '../../../src/browser/goldie/goldie-lesson.css';
 
 type ConnectionState = 'Connecting' | 'Connected' | 'Unavailable';
@@ -31,6 +33,10 @@ export class GoldieWidget extends ReactWidget {
     @inject(GoldieService) protected readonly service: GoldieService;
     @inject(GOLDIE_HANDOFF_DIALOG) protected readonly fileDialogService: FileDialogService;
     @inject(ApplicationShell) protected readonly shell: ApplicationShell;
+    @inject(GoldieWorkspaceConnection) protected readonly workspaceConnection: GoldieWorkspaceConnection;
+    protected workspaceState: GoldieWorkspaceConnection['state'];
+    protected unsubscribeWorkspace: (() => void) | undefined;
+    protected connectingWorkspace = false;
     protected connectionState: ConnectionState = 'Connecting';
     protected connectionDetail = '';
     protected requestRevision = 0;
@@ -47,6 +53,7 @@ export class GoldieWidget extends ReactWidget {
     protected unsubscribeRecorder: (() => void) | undefined;
     protected captureGeneration = 0;
     protected preparingVoiceQuestion = false;
+    private readonly microphoneLevelRef: GradientOrbLevelRef = { current: 0 };
     private readonly cancelCapture = (): void => {
         if (this.voiceQuestionActive) { this.discardVoiceQuestion(); }
     };
@@ -66,16 +73,11 @@ export class GoldieWidget extends ReactWidget {
             const saved = globalThis.localStorage?.getItem('goldie.knowledge-level.v1');
             if (saved === 'beginner' || saved === 'intermediate') { this.selectedLevel = saved; }
         } catch { /* A profile remains usable without local storage. */ }
-        this.lessonController = new GoldieLessonController(this.service);
+        this.lessonController = this.workspaceConnection.lesson;
         this.lessonState = this.lessonController.state;
-        this.unsubscribeLesson = this.lessonController.subscribe(state => {
-            const previousView = this.lessonState.view;
-            this.lessonState = state;
-            if (state.busy) { this.contextError = undefined; }
-            if (state.context) { this.selectedLevel = state.context.profile.level; }
-            if (state.view !== previousView && (state.view === 'question' || state.view === 'practice')) { this.detailsOpen = true; }
-            this.update();
-        });
+        this.unsubscribeLesson = this.lessonController.subscribe(state => this.receiveLessonState(state));
+        this.workspaceState = this.workspaceConnection.state;
+        this.unsubscribeWorkspace = this.workspaceConnection.subscribe(state => this.receiveWorkspaceState(state));
 
         this.unsubscribeRecorder = this.recorder.subscribe(state => {
             this.recorderState = state;
@@ -86,7 +88,63 @@ export class GoldieWidget extends ReactWidget {
         document.addEventListener('visibilitychange', this.captureHidden);
         this.update();
         this.checkConnection();
-        this.lessonController.restore();
+    }
+
+    protected receiveLessonState(state: GoldieLessonState): void {
+        const previousView = this.lessonState.view;
+        this.lessonState = state;
+        if (state.busy) { this.contextError = undefined; }
+        if (state.context) { this.selectedLevel = state.context.profile.level; }
+        if (state.view !== previousView && ['offer', 'practice'].includes(state.view)) { this.detailsOpen = true; }
+        if (['lesson', 'question'].includes(state.view) && (state.view !== previousView || state.audioState === 'playing')) {
+            this.detailsOpen = false;
+        }
+        this.update();
+    }
+
+    protected receiveWorkspaceState(state: GoldieWorkspaceConnection['state']): void {
+        if (state.workspaceUri !== this.workspaceState?.workspaceUri) { this.cancelCapture(); }
+        this.workspaceState = state;
+        this.update();
+    }
+
+    protected async connectWorkspace(): Promise<void> {
+        if (this.connectingWorkspace || this.lessonState.busy || this.loadingHandoff || this.voiceQuestionActive) { return; }
+        this.connectingWorkspace = true;
+        this.update();
+        try {
+            await this.workspaceConnection.connect();
+        } finally {
+            this.connectingWorkspace = false;
+            if (!this.isDisposed) { this.update(); }
+        }
+    }
+
+    protected renderWorkspaceControls(): React.ReactNode {
+        const state = this.workspaceState;
+        const disabled = this.connectingWorkspace || this.loadingHandoff || this.lessonState.busy || this.voiceQuestionActive;
+        return <section className='goldie-workspace-controls' aria-label='Project connection'>
+            <div className='goldie-workspace-heading'>
+                <span className={codicon('folder-opened')} aria-hidden='true' />
+                <strong>{state.workspaceName ?? 'Your project'}</strong>
+            </div>
+            <p className='goldie-note' role='status'>{state.status}</p>
+            {state.revision !== undefined && <p className='goldie-note'>Current handoff · Revision {state.revision}</p>}
+            {state.connected
+                ? <button className='theia-button secondary' disabled={disabled} onClick={() => this.workspaceConnection.disconnect()}>Disconnect</button>
+                : <button className='theia-button' disabled={disabled} onClick={() => this.connectWorkspace()}>
+                    {this.connectingWorkspace ? 'Connecting project…' : 'Connect this project'}
+                </button>}
+            {!state.connected && <p className='goldie-note'>Connect to watch this project's .goldie/HANDOFF.md for new builds.</p>}
+            {state.pendingRevision !== undefined && <div className='goldie-workspace-pending' role='status'>
+                <strong>A newer build is ready · Revision {state.pendingRevision}</strong>
+                <p className='goldie-note'>{this.lessonController.canChangeContext
+                    ? 'Choose when to learn about the latest changes.' : 'Your current lesson stays in place. Finish or decline it to learn about the latest build.'}</p>
+                {this.lessonController.canChangeContext && <button className='theia-button secondary' disabled={disabled}
+                    onClick={() => this.workspaceConnection.learnLatest()}>Learn about latest build</button>}
+            </div>}
+            {state.error && <p className='goldie-workspace-error' role='alert'>{state.error}</p>}
+        </section>;
     }
 
     protected async checkConnection(): Promise<void> {
@@ -126,7 +184,8 @@ export class GoldieWidget extends ReactWidget {
         clearTimeout(this.connectionTimer);
         this.unsubscribeLesson?.();
         this.unsubscribeLesson = undefined;
-        this.lessonController?.dispose();
+        this.unsubscribeWorkspace?.();
+        this.unsubscribeWorkspace = undefined;
         super.dispose();
     }
 
@@ -134,6 +193,8 @@ export class GoldieWidget extends ReactWidget {
         this.cancelCapture();
         super.onAfterHide(msg);
     }
+
+    async openDetails(): Promise<void> { this.cancelCapture(); this.detailsOpen = true; this.update(); }
 
     protected get voiceCaptureActive(): boolean {
         return ['permission', 'recording', 'stopping', 'ready'].includes(this.recorderState.status);
@@ -181,12 +242,12 @@ export class GoldieWidget extends ReactWidget {
     }
 
     protected renderVoiceQuestionControls(): React.ReactNode {
-        const { status, error } = this.recorderState ?? { status: 'idle' };
+        const { status, error, inputLevel, elapsedSeconds } = this.recorderState ?? { status: 'idle' };
         const submitting = this.voiceSubmissionActive;
         const active = this.voiceQuestionActive;
         const statusText = this.preparingVoiceQuestion ? 'Pausing your lesson…' : submitting ? this.busyMessage()
             : status === 'permission' ? 'Waiting for microphone permission…'
-                : status === 'recording' ? 'Listening… recording stops at 30 seconds.'
+                : status === 'recording' ? `Listening… ${Math.floor(elapsedSeconds ?? 0)} / 30 seconds.`
                     : status === 'stopping' ? 'Finishing your recording…'
                         : status === 'ready' ? 'Recording ready. Send it when you are ready.' : error;
         return <section className={`goldie-voice-question${active ? ' active' : ''}`} aria-label='Ask Goldie by voice'>
@@ -204,6 +265,8 @@ export class GoldieWidget extends ReactWidget {
                         : codicon('loading', this.preparingVoiceQuestion || status === 'stopping' || submitting)} aria-hidden='true' />
                     <span>{statusText}</span>
                 </div>
+                {status === 'recording' && inputLevel !== undefined && <meter className='goldie-mic-level'
+                    min={0} max={1} value={inputLevel} aria-label='Microphone input level' />}
                 <div className='goldie-form-actions'>
                     {!submitting && (status === 'recording' || status === 'ready') && <button className='theia-button' onClick={() => this.sendVoiceQuestion()}>
                         Send question
@@ -223,9 +286,10 @@ export class GoldieWidget extends ReactWidget {
         this.cancelCapture();
         await this.lessonController.endSession();
     }
+    async finishLesson(): Promise<void> { await this.endSession(); }
 
     async loadSampleHandoff(): Promise<void> {
-        if (this.loadingHandoff) { return; }
+        if (this.loadingHandoff || this.workspaceState.connected) { return; }
         if (!this.lessonController.canChangeContext) {
             this.contextError = 'Decline the current offer or end the lesson before loading another handoff.';
             this.update();
@@ -275,14 +339,15 @@ export class GoldieWidget extends ReactWidget {
                 onChange={event => this.changeKnowledgeLevel(event.target.value)}>
                 <option value='beginner'>Beginner</option><option value='intermediate'>Intermediate</option>
             </select>
-            <button className='theia-button secondary goldie-primary-action' disabled={disabled} onClick={() => this.loadSampleHandoff()}>
+            {!this.workspaceState.connected && <button className='theia-button secondary goldie-primary-action' disabled={disabled} onClick={() => this.loadSampleHandoff()}>
                 {this.loadingHandoff ? 'Loading handoff…' : 'Load handoff'}
-            </button>
+            </button>}
             <p className='goldie-note'>{context
                 ? `${context.name} · Revision ${context.revision} · ${context.profile.level === 'beginner' ? 'Beginner' : 'Intermediate'}`
-                : 'Choose a Markdown handoff to give Goldie project context.'}</p>
-            <p className='goldie-note'>The handoff is saved locally for recovery.
-                Prepare lesson sends it to the teaching service. No source files are inspected.</p>
+                : this.workspaceState.connected ? 'Waiting for Codex to write the project handoff.' : 'Choose a Markdown handoff to give Goldie project context.'}</p>
+            <p className='goldie-note'>{this.workspaceState.connected
+                ? 'Project handoff updates are watched locally. Learning sends the current handoff to the teaching service.'
+                : 'The handoff is saved locally for recovery. Prepare lesson sends it to the teaching service.'} No source files are inspected.</p>
         </section>;
     }
 
@@ -333,12 +398,12 @@ export class GoldieWidget extends ReactWidget {
                 </div>
                 : <div className='goldie-ready-card'>
                     <span className={codicon('check')} aria-hidden='true' />
-                    <div><strong>{context ? 'Project context is ready.' : 'Load context to get started.'}</strong>
+                    <div><strong>{context ? 'Project context is ready.' : this.workspaceState.connected ? 'Waiting for project context.' : 'Load context to get started.'}</strong>
                         <p>Goldie suggests a lesson when there is something useful to explain.</p></div>
                 </div>}
             {this.renderContextControls()}
             <button className='theia-button goldie-primary-action' disabled={busy || this.loadingHandoff || unavailable || !context}
-                onClick={() => this.lessonController.checkOffer()}>
+                onClick={() => this.workspaceState.connected ? this.workspaceConnection.learnLatest() : this.lessonController.checkOffer()}>
                 {busy ? this.busyMessage() : 'Prepare lesson'}
             </button>
             {offer && !offer.shouldOffer && <p className='goldie-empty-result' role='status'>No lesson is suggested for this build yet. Keep coding and check again later.</p>}
@@ -418,7 +483,7 @@ export class GoldieWidget extends ReactWidget {
         const audioHelp = !explanation
             ? 'Prepare this phase and its audio again.'
             : audioState === 'error'
-                ? 'The text stays available if audio fails again.'
+                ? 'Try playing the audio again.'
                 : 'Use the button to play or pause.';
         return <div className='goldie-view goldie-lesson-view'>
             <div className='goldie-phase-meta'>
@@ -429,11 +494,6 @@ export class GoldieWidget extends ReactWidget {
             <p className='goldie-objective'>{phase.objective}</p>
             {restored && <p className='goldie-note' role='status'>Saved lesson restored. Choose Play to continue; audio stays paused until then.</p>}
             <p className='goldie-note'>Conceptual explanation · project implementation has not been inspected.</p>
-            <div className='goldie-explanation' aria-live='polite'>
-                {busy && !explanation
-                    ? <p className='goldie-loading'><span className={codicon('loading', true)} aria-hidden='true' /> {this.busyMessage()}</p>
-                    : <p>{explanation?.explanation ?? phase.description}</p>}
-            </div>
             <div className='goldie-player'>
                 <button className='goldie-play-button' disabled={busy || this.voiceQuestionActive} onClick={() => this.lessonController.playPause()}
                     aria-label={!explanation ? 'Prepare explanation' : audioPlaying ? 'Pause lesson audio' : 'Play lesson audio'}>
@@ -446,47 +506,37 @@ export class GoldieWidget extends ReactWidget {
                         <small>{this.formatTime(audioPosition ?? 0)} / {this.formatTime(audioDuration!)}</small></>}
                     <small>{audioHelp}</small></div>
             </div>
-            {explanation && audioState === 'error' && <p className='goldie-audio-error' role='status'>Audio could not play. The full explanation is still available above.</p>}
+            {explanation && audioState === 'error' && <p className='goldie-audio-error' role='status'>Audio could not play. Retry audio to hear this explanation.</p>}
+            {explanation && audioState === 'error' && <div className='goldie-answer'><h3>Saved explanation</h3><p>{explanation.explanation}</p></div>}
             <div className='goldie-phase-actions'>
                 <button disabled={busy || this.voiceQuestionActive} onClick={() => this.lessonController.skipPhase()}>Skip phase</button>
                 <button disabled={busy || this.voiceQuestionActive} onClick={() => this.lessonController.markFamiliar()}>I already know this</button>
             </div>
-            {this.renderVoiceQuestionControls()}
             <button className='theia-button secondary goldie-next-button' disabled={busy || this.voiceQuestionActive}
                 onClick={() => this.lessonController.explainMore()}>Explain more</button>
             <button className='theia-button goldie-next-button' disabled={busy || this.voiceQuestionActive || !explanation}
                 onClick={() => this.lessonController.nextPhase()}>
-                Mark read
+                Mark covered
             </button>
-            <p className='goldie-note'>Listening or Mark read records this topic as covered, then offers Practice or Continue. It does not assess mastery.</p>
+            <p className='goldie-note'>Listening or Mark covered offers Practice or Continue. It does not assess mastery.</p>
             {this.renderRoadmap()}
         </div>;
     }
 
     protected renderQuestion(): React.ReactNode {
-        const { question, answer, addOn, busy, phaseIndex, audioState, retryable } = this.lessonState;
+        const { answer, addOn, busy, phaseIndex, audioState, retryable } = this.lessonState;
         const answered = answer?.kind === 'answer';
         return <div className='goldie-view goldie-question-view'>
             <p className='goldie-eyebrow'>{addOn ? 'EXPLAIN MORE' : 'QUESTION'}</p>
             <h2>Your lesson is paused.</h2>
             <p className='goldie-saved-note'><span className={codicon('bookmark')} aria-hidden='true' /> Your place in phase {phaseIndex + 1} is saved.</p>
-            {question && <blockquote>{question}</blockquote>}
-            <div className='goldie-answer' aria-live='polite'>
-                {busy && !answer && !addOn ? <p className='goldie-loading'><span className={codicon('loading', true)} aria-hidden='true' /> {this.busyMessage()}</p>
-                    : addOn ? <><h3>A closer look</h3><p>{addOn.explanation}</p></>
-                        : answered ? <><h3>Goldie's answer</h3><p>{answer.answer}</p></>
-                        : answer?.kind === 'needs_sources'
-                            ? <><h3>More context needed</h3><p>Goldie needs project sources before it can answer this question. Your lesson position is still saved.</p></>
-                            : <><h3>No answer received</h3><p>Retry the same question, record a new one, or return to the lesson.</p></>}
-            </div>
-            {answered && answer.supportedQuestions && <section className='goldie-supported-questions' aria-label='Related questions'>
-                <h3>You could ask next</h3><ul>{answer.supportedQuestions.map(supported => <li key={supported}>{supported}</li>)}</ul>
-            </section>}
+            {answer?.kind === 'needs_sources' && <p className='goldie-note' role='status'>Goldie needs project sources to answer. Your lesson position is saved.</p>}
+            {audioState === 'error' && (answered || addOn) && <div className='goldie-answer'><h3>Saved answer</h3>
+                <p>{addOn?.explanation ?? (answer?.kind === 'answer' ? answer.answer : '')}</p></div>}
             {(answered || addOn) && <button className='theia-button secondary goldie-answer-audio' disabled={busy || this.voiceQuestionActive}
                 onClick={() => this.lessonController.playPause()}>
                 {audioState === 'playing' ? 'Pause answer audio' : audioState === 'error' && retryable !== false ? 'Retry answer audio' : 'Play answer audio'}
             </button>}
-            {this.renderVoiceQuestionControls()}
             <div className='goldie-question-actions'>
                 <button className='theia-button' disabled={busy || this.voiceQuestionActive}
                     onClick={() => this.lessonController.resumeLesson()}>Resume phase {phaseIndex + 1}</button>
@@ -502,6 +552,7 @@ export class GoldieWidget extends ReactWidget {
         if (practice) {
             return <div className='goldie-view goldie-practice-shell'>
                 <GoldiePracticeView practice={practice} onUpdate={() => this.update()}
+                    continueLabel={session && ['completed', 'dismissed'].includes(session.status) ? 'Back to recap' : undefined}
                     onContinue={() => this.lessonController.continueAfterPractice()} />
             </div>;
         }
@@ -563,6 +614,10 @@ export class GoldieWidget extends ReactWidget {
     }
 
     protected get orbLevelRef(): GradientOrbLevelRef | undefined {
+        if (this.recorderState.status === 'recording') {
+            this.microphoneLevelRef.current = this.recorderState.inputLevel ?? 0;
+            return this.microphoneLevelRef;
+        }
         const controller = this.lessonController as (GoldieLessonController & { readonly audioLevelRef?: GradientOrbLevelRef }) | undefined;
         return controller?.audioLevelRef;
     }
@@ -574,7 +629,7 @@ export class GoldieWidget extends ReactWidget {
         if (view === 'lesson' || view === 'question') { await this.lessonController.playPause(); return; }
         if (view === 'practice' || view === 'recap') { this.detailsOpen = true; this.update(); return; }
         if (!context) { this.detailsOpen = true; this.update(); return; }
-        await this.lessonController.checkOffer();
+        if (this.workspaceState.connected) { await this.workspaceConnection.learnLatest(); } else { await this.lessonController.checkOffer(); }
     }
 
     protected async handleSkipControl(): Promise<void> {
@@ -591,8 +646,6 @@ export class GoldieWidget extends ReactWidget {
 
     protected async openVoiceQuestion(): Promise<void> {
         if (!['lesson', 'question'].includes(this.lessonState.view)) { return; }
-        this.detailsOpen = true;
-        this.update();
         await this.startVoiceQuestion();
     }
 
@@ -615,10 +668,10 @@ export class GoldieWidget extends ReactWidget {
     protected renderOrbError(): React.ReactNode {
         const { error, retryable, busy } = this.lessonState;
         const connectionError = this.connectionState === 'Unavailable';
-        if (!error && !this.contextError && !connectionError) { return undefined; }
+        if (!error && !this.contextError && !connectionError && !this.workspaceState.error) { return undefined; }
         return <div className='goldie-orb-error' role='alert'>
             <span className={codicon('warning')} aria-hidden='true' />
-            <span>Goldie couldn't continue.</span>
+            <span>{error ?? this.contextError ?? "Goldie couldn't continue."}</span>
             {(connectionError || retryable) && <button disabled={busy || this.connectionState === 'Connecting'} onClick={() => {
                 if (connectionError) { this.checkConnection(); } else { this.lessonController.retry(); }
             }}>Retry</button>}
@@ -640,26 +693,39 @@ export class GoldieWidget extends ReactWidget {
         return `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
     }
 
+    protected renderCaption(): React.ReactNode {
+        const { view, explanation, answer, addOn, audioState, audioPosition, audioDuration, busy } = this.lessonState;
+        if (busy || this.voiceQuestionActive || !['playing', 'paused'].includes(audioState)) { return undefined; }
+        const text = view === 'lesson' ? explanation?.explanation
+            : view === 'question' ? addOn?.explanation ?? (answer?.kind === 'answer' ? answer.answer : undefined) : undefined;
+        const sentence = estimatedSentence(text, audioPosition ?? 0, audioDuration ?? 0);
+        return sentence && <p className='goldie-orb-caption' aria-label='Spoken caption, approximate timing'>{sentence}</p>;
+    }
+
+    protected async finishAndPractice(): Promise<void> {
+        if (this.lessonState.view !== 'lesson' || this.lessonState.busy || this.voiceQuestionActive) { return; }
+        await this.lessonController.nextPhase();
+        if (this.lessonController.state.view === 'practice') { await this.lessonController.openPractice(); }
+    }
+
     protected render(): React.ReactNode {
         const { busy, view, audioState } = this.lessonState;
+        if (view === 'practice') {
+            return <section className='goldie-panel goldie-practice-panel' aria-label='Goldie learning panel' aria-busy={busy}>
+                <header className='goldie-practice-header'>
+                    <span className='goldie-mark' aria-hidden='true' />
+                    <h2>Goldie</h2>
+                    <button className='goldie-close' aria-label='Close Goldie' title='Close Goldie' onClick={() => this.closeGoldie()}>×</button>
+                </header>
+                {this.renderStatus()}
+                <div className='goldie-panel-body'>{this.renderError()}{this.renderPractice()}</div>
+            </section>;
+        }
         const playing = audioState === 'playing';
-        const canSkip = !busy && !this.voiceQuestionActive && (view === 'lesson' || view === 'question' || view === 'offer');
         const sessionOpen = !!this.lessonState.session && !['completed', 'dismissed'].includes(this.lessonState.session.status);
         const canAsk = !busy && !this.voiceQuestionActive && sessionOpen && (view === 'lesson' || view === 'question');
         const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
         return <section className='goldie-panel goldie-orb-shell' aria-label='Goldie learning panel' aria-busy={busy || this.loadingHandoff}>
-            <header className='goldie-panel-header'>
-                <span className='goldie-orb-mini' aria-hidden='true' /><strong>Goldie</strong>
-                <button className={`goldie-header-action${this.detailsOpen ? ' active' : ''}`}
-                    aria-label={this.detailsOpen ? 'Close Goldie details' : 'Open Goldie setup and details'}
-                    title={this.detailsOpen ? 'Close details' : 'Setup and details'} onClick={() => {
-                        if (this.detailsOpen) { this.cancelCapture(); }
-                        this.detailsOpen = !this.detailsOpen; this.update();
-                    }}>
-                    <span className={codicon(this.detailsOpen ? 'close' : 'settings-gear')} aria-hidden='true' />
-                </button>
-                <button className='goldie-close' aria-label='Close Goldie panel' title='Close Goldie panel' onClick={() => this.closeGoldie()}>×</button>
-            </header>
             <div className='goldie-orb-stage'>
                 <div className='goldie-live-status' role='status' aria-live='polite' aria-atomic='true'>
                     {this.recorderState.status === 'recording' ? 'Goldie is listening'
@@ -668,37 +734,37 @@ export class GoldieWidget extends ReactWidget {
                 </div>
                 <div className={`goldie-orb-visual${playing ? ' speaking' : ''}`}>
                     <span className='goldie-orb-halo' aria-hidden='true' />
-                    <GradientOrb levelRef={this.orbLevelRef} reducedMotion={reducedMotion} />
+                    <GradientOrb config={{ rotationSpeed: 0.4 }} levelRef={this.orbLevelRef} reducedMotion={reducedMotion} />
+                    {(busy || this.loadingHandoff) && <span className='goldie-demo-thinking' aria-hidden='true'><i /><i /><i /></span>}
                 </div>
-                {this.renderSessionMarkers()}
+                {this.renderCaption()}
                 {this.renderOrbError()}
+                <div className='goldie-orb-navigation' aria-label='Lesson navigation'>
+                    {view === 'question' && <button className='goldie-return-lesson' disabled={busy || this.voiceQuestionActive}
+                        onClick={() => this.handleSkipControl()}>Return to lesson</button>}
+                    {view === 'lesson' && <>
+                        <button disabled={busy || this.voiceQuestionActive} onClick={() => this.lessonController.replayPhase()}>Replay section</button>
+                        <button disabled={busy || this.voiceQuestionActive} onClick={() => this.lessonController.skipPhase()}>Skip section</button>
+                        <button disabled={busy || this.voiceQuestionActive || !this.lessonState.explanation}
+                            title='Mark this section covered and open optional practice' onClick={() => this.finishAndPractice()}>Finish &amp; practice</button>
+                    </>}
+                </div>
                 <div className='goldie-orb-controls' role='group' aria-label='Goldie controls'>
-                    <button className='goldie-orb-control' disabled={!canAsk} aria-label={canAsk ? 'Ask Goldie by voice' : 'Voice questions are available during an open lesson'}
-                        title={canAsk ? 'Ask Goldie' : 'Voice questions are available during an open lesson'} onClick={() => this.openVoiceQuestion()}>
-                        <svg viewBox='0 0 24 24' aria-hidden='true'><path d='M5 5.5h14v10H9l-4 3v-13Z'/><path d='M9 9.5h6M9 12.5h4'/></svg>
+                    <button className='goldie-orb-control' disabled={!canAsk} aria-label='Ask Goldie by voice' title='Ask Goldie' onClick={() => this.openVoiceQuestion()}>
+                        <span className={codicon('mic')} aria-hidden='true' />
+                        <span className='goldie-orb-control-label' aria-hidden='true'>Ask</span>
                     </button>
-                    <button className={`goldie-orb-control goldie-orb-primary${playing ? ' playing' : ''}`}
-                        disabled={busy || this.loadingHandoff || this.voiceQuestionActive}
+                    <button className='goldie-orb-control goldie-orb-primary' disabled={busy || this.loadingHandoff || this.voiceQuestionActive}
                         aria-label={this.primaryControlLabel()} title={this.primaryControlLabel()} onClick={() => this.handlePrimaryControl()}>
-                        {busy || this.loadingHandoff
-                            ? <span className={codicon('loading', true)} aria-hidden='true' />
-                            : <svg viewBox='0 0 24 24' aria-hidden='true'>{playing
-                                ? <path d='M8 6.5v11M16 6.5v11' />
-                                : <path d='m9 6 8 6-8 6V6Z' />}</svg>}
-                    </button>
-                    <button className='goldie-orb-control' disabled={!canSkip}
-                        aria-label={view === 'question' ? 'Return to lesson' : view === 'offer' ? 'Not now' : 'Skip this explanation'}
-                        title={view === 'question' ? 'Return to lesson' : view === 'offer' ? 'Not now' : 'Skip'} onClick={() => this.handleSkipControl()}>
-                        <svg viewBox='0 0 24 24' aria-hidden='true'><path d='m7 7 7 5-7 5V7ZM17 7v10' /></svg>
+                        <svg viewBox='0 0 24 24' aria-hidden='true'>{playing ? <path d='M8 6.5v11M16 6.5v11' /> : <path d='m9 6 8 6-8 6V6Z' />}</svg>
+                        <span className='goldie-orb-control-label' aria-hidden='true'>{playing ? 'Pause' : 'Play'}</span>
                     </button>
                 </div>
+                {(this.voiceQuestionActive || this.recorderState.error) && this.renderVoiceQuestionControls()}
             </div>
             {this.detailsOpen && <aside className='goldie-details-drawer' aria-label='Goldie setup and details'>
-                <div className='goldie-panel-body'>
-                    {this.renderStatus()}
-                    {this.renderError()}
-                    {this.renderLessonView()}
-                </div>
+                <button className='theia-button secondary' onClick={() => { this.detailsOpen = false; this.update(); }}>Back to voice</button>
+                <div className='goldie-panel-body'>{this.renderStatus()}{this.renderWorkspaceControls()}{this.renderError()}{this.renderLessonView()}</div>
             </aside>}
         </section>;
     }

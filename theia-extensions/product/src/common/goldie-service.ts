@@ -34,10 +34,21 @@ export interface GoldieHandoff {
     name: string;
 }
 
+export interface GoldieWorkspaceHandoff {
+    projectId: string;
+    name: string;
+    kind: 'missing' | 'ready';
+    revision?: number;
+    handoff?: string;
+    fingerprint?: string;
+}
+
 /** Local IDE transport only. Teaching and provider keys belong to the teaching backend. */
 export interface GoldieService {
     /** Explicit local Markdown selection only; never sends the file to a provider. */
     loadHandoff(uri: string): Promise<GoldieHandoff>;
+    /** Inspect only the canonical handoff inside a local workspace; never contacts HTTP. */
+    inspectWorkspaceHandoff(rootUri: string): Promise<GoldieWorkspaceHandoff>;
     checkHealth(): Promise<GoldieHealth>;
     offer(request: OfferRequest): Promise<OfferResponse>;
     startSession(request: SessionRequest): Promise<SessionResponse>;

@@ -76,7 +76,8 @@
     "license:check:fetch-jar": "node scripts/fetch-dash-licenses-jar.js",
     "license:check": "yarn license:check:fetch-jar && npx dash-licenses-wrapper  --configFile=./configs/license-check-config.json",
     "license:check:review": "yarn license:check:fetch-jar && npx dash-licenses-wrapper  --configFile=./configs/license-check-config.json --review",
-    "postinstall": "theia-patch"
+    "postinstall": "theia-patch",
+    "test:stage4": "yarn test:stage3"
   },
   "theiaPluginsDir": "plugins",
   "theiaPlugins": {
@@ -112,6 +113,7 @@
     "**/tar": "^7.5.22",
     "**/uuid": "^11.1.1",
     "**/mocha": "^11.0.0",
-    "lerna/js-yaml": "^4.3.1"
+    "lerna/js-yaml": "^4.3.1",
+    "@openai/codex-sdk": "0.162.1"
   }
 }

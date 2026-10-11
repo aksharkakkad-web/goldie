@@ -6,13 +6,17 @@ const { createRequire } = require('node:module');
 const { renderToStaticMarkup } = require('react-dom/server');
 
 // Execute the real widget with only its desktop host replaced. React rendering stays real.
-function renderWidget(state, { detailsOpen = false, recorderState = { status: 'idle' }, practice } = {}) {
+function createWidget(state, { detailsOpen = false, recorderState = { status: 'idle' }, practice,
+    workspaceState = { connected: false, status: 'Connect this project to learn from Codex updates.' }, canChangeContext = true } = {}) {
     const filename = path.join(__dirname, '../lib/browser/goldie/goldie-widget.js');
     const localRequire = createRequire(filename);
     const exports = {};
-    const context = { exports, require: id => {
+    const context = { exports, clearTimeout,
+        window: { addEventListener() {}, removeEventListener() {} },
+        document: { addEventListener() {}, removeEventListener() {} }, require: id => {
         if (id.endsWith('.css')) { return {}; }
-        if (id === '@theia/core/lib/browser/widgets/react-widget') { return { ReactWidget: class {} }; }
+        if (id === '@theia/core/lib/browser/widgets/react-widget') { return { ReactWidget: class { dispose() {} } }; }
+        if (id === './goldie-workspace-connection') { return { GoldieWorkspaceConnection: class {} }; }
         if (id === '@theia/core/lib/browser/shell/application-shell') { return { ApplicationShell: class {} }; }
         if (id === '@theia/core/lib/browser/widgets') { return { codicon: name => `codicon codicon-${name}` }; }
         if (id === '@theia/core/shared/inversify') { return { inject: () => () => {}, injectable: () => value => value, postConstruct: () => {} }; }
@@ -22,33 +26,38 @@ function renderWidget(state, { detailsOpen = false, recorderState = { status: 'i
     const widget = Object.create(exports.GoldieWidget.prototype);
     Object.assign(widget, {
         lessonState: state, connectionState: 'Connected', connectionDetail: 'Ready',
-        detailsOpen, recorderState, loadingHandoff: false,
+        detailsOpen, recorderState, microphoneLevelRef: { current: 0 }, loadingHandoff: false, workspaceState, connectingWorkspace: false, selectedLevel: 'beginner',
+        workspaceConnection: { connect: async () => {}, disconnect() {}, learnLatest: async () => {} },
         lessonController: {
-            canChangeContext: true, practice,
+            canChangeContext, practice,
             prepareVoiceQuestion: async () => true, submitVoiceQuestion: async () => {}, cancelVoiceQuestion() {},
             continueAfterPractice: async () => {}, openPractice: async () => {}
         }
     });
-    return renderToStaticMarkup(widget.render());
+    return widget;
 }
-module.exports = { renderWidget };
+function renderWidget(state, options) { return renderToStaticMarkup(createWidget(state, options).render()); }
+module.exports = { renderWidget, createWidget };
 
 function viewContribution({ restored, width }) {
     const filename = path.join(__dirname, '../lib/browser/goldie/goldie-view-contribution.js');
     const exports = {};
     const localRequire = createRequire(filename);
-    const widget = { isAttached: restored, node: { getBoundingClientRect: () => ({ width }) } };
+    const widget = { isAttached: restored, isVisible: restored, onDidChangeVisibility() {}, onDidDispose() {}, node: { getBoundingClientRect: () => ({ width }) } };
     class ViewHost {
         constructor() { this.resizes = []; this.shell = { resize: (...args) => this.resizes.push(args) }; }
         tryGetWidget() { return widget; }
         async openView() { widget.isAttached = true; return widget; }
     }
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { exports, require: id => {
-        if (id === '@theia/core/shared/inversify') { return { injectable: () => value => value }; }
+        if (id === '@theia/core/shared/inversify') { return { injectable: () => value => value, inject: () => () => {} }; }
         if (id === '@theia/core/lib/browser/shell/view-contribution') { return { AbstractViewContribution: ViewHost }; }
+        if (id === '@theia/core/lib/browser/status-bar/status-bar') { return { StatusBar: Symbol('StatusBar'), StatusBarAlignment: { RIGHT: 1 } }; }
         if (id === './goldie-widget') { return { GoldieWidget: { ID: 'goldie:panel' } }; }
         return localRequire(id);
     } }, { filename });
-    return new exports.GoldieViewContribution();
+    const contribution = new exports.GoldieViewContribution();
+    contribution.statusBar = { setElement: async () => {} };
+    return contribution;
 }
 module.exports.viewContribution = viewContribution;

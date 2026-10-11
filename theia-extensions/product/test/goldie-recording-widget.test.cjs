@@ -12,7 +12,7 @@ const lesson = { view: 'lesson', busy: false, phaseIndex: 0, statuses: { p0: 'pe
 
 test('active lesson offers voice-only Ask Goldie with no typed composer or microphone check', () => {
     const html = renderWidget(lesson, { detailsOpen: true });
-    assert.match(html, /Ask Goldie/); assert.match(html, /transcribed locally/);
+    assert.match(html, /Ask Goldie/); assert.doesNotMatch(html, /A useful explanation/);
     assert.doesNotMatch(html, /<textarea[^>]*goldie-question/); assert.doesNotMatch(html, /Microphone check|Test microphone/);
 });
 
@@ -31,12 +31,45 @@ test('submitting hides duplicate Send, keeps Cancel, and shows local transcripti
     assert.match(html, /Transcribing on this device/); assert.match(html, /Cancel/); assert.doesNotMatch(html, /Send question/);
 });
 
-test('recognized transcript is read-only and answer text remains visible after speech failure', () => {
-    const html = renderWidget({ ...lesson, view: 'question', question: 'Why keep an API boundary?',
+test('speech failure retains a readable answer only in explicitly opened details, without a question transcript', () => {
+    const state = { ...lesson, view: 'question', question: 'Why keep an API boundary?',
         answer: { kind: 'answer', answer: 'It keeps callers independent.', contentId: 'answer-1', resumePhaseId: 'p0' },
-        error: 'Audio could not play.', audioState: 'error', retryable: true }, { detailsOpen: true });
-    assert.match(html, /Why keep an API boundary/); assert.match(html, /It keeps callers independent/);
+        error: 'Audio could not play.', audioState: 'error', retryable: true };
+    const html = renderWidget(state, { detailsOpen: true });
+    assert.doesNotMatch(html, /Why keep an API boundary/);
+    assert.match(html, /Saved answer/); assert.match(html, /It keeps callers independent/);
+    assert.doesNotMatch(renderWidget(state), /It keeps callers independent/);
+    assert.match(html, /Retry answer audio/);
     assert.doesNotMatch(html, /<textarea/);
+});
+test('compact orb keeps Send and Cancel visible without opening a text drawer', () => {
+    const html = renderWidget({ ...lesson, view: 'question' }, { recorderState: { status: 'recording' } });
+    assert.match(html, /Send question/); assert.match(html, /Cancel/);
+    assert.doesNotMatch(html, /goldie-details-drawer|goldie-answer|goldie-explanation/);
+});
+test('voice navigation names Return, Replay, Skip and optional practice explicitly', () => {
+    const question = renderWidget({ ...lesson, view: 'question' });
+    assert.match(question, />Return to lesson</);
+    assert.doesNotMatch(question, />Skip section</);
+    const html = renderWidget(lesson);
+    assert.match(html, />Replay section</); assert.match(html, />Skip section</); assert.match(html, /Finish &amp; practice/);
+});
+test('question state does not automatically open details or record another question', () => {
+    const { createWidget } = require('./goldie-widget-test-utils.cjs');
+    const widget = createWidget(lesson); widget.update = () => {};
+    widget.recorder = { start: () => assert.fail('No automatic recording') };
+    widget.receiveLessonState({ ...lesson, view: 'question', answer: { kind: 'answer', answer: 'Hidden answer.' } });
+    assert.equal(widget.detailsOpen, false);
+});
+
+test('speaking and returning from practice show the voice orb without the details drawer', () => {
+    const { createWidget } = require('./goldie-widget-test-utils.cjs');
+    const widget = createWidget(lesson, { detailsOpen: true }); widget.update = () => {};
+    widget.receiveLessonState({ ...lesson, audioState: 'playing' });
+    assert.equal(widget.detailsOpen, false);
+    widget.lessonState = { ...lesson, view: 'practice' }; widget.detailsOpen = true;
+    widget.receiveLessonState({ ...lesson, audioState: 'paused' });
+    assert.equal(widget.detailsOpen, false);
 });
 
 test('practice choice and recap expose explicit practice entry for completed phases', () => {

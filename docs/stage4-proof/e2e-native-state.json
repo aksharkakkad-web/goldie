@@ -1,0 +1,14 @@
+{
+  "time": "2026-10-11T08:58:11.774Z",
+  "source": "actual native Codex, Gemini, ElevenLabs, human microphone and native practice",
+  "projectId": "goldie-workspace-adaa01152827bdf28dca582c86cfb6d5",
+  "snapshotRevision": 1,
+  "latestHandoffRevision": 4,
+  "sessionStatus": "completed",
+  "coveredPhases": [
+    "server-validation-and-persistence",
+    "client-server-integration-and-testing"
+  ],
+  "recognizedQuestionCount": 2,
+  "practiceBatchCount": 2
+}

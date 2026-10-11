@@ -12,6 +12,7 @@ export interface GoldieAudioAdapter {
     select(track: GoldieAudioTrack): void;
     play(): Promise<void>;
     pause(): void;
+    seek?(position: number): void;
     clear(): void;
     dispose(): void;
 }
@@ -94,6 +95,12 @@ export class GoldieAudioPlayer implements GoldieAudioAdapter {
         await audio.play();
     }
     pause(): void { this.playbackGeneration++; this.stopMeter(); this.tracks.get(this.active)?.audio.pause(); }
+    seek(position: number): void {
+        if (!Number.isFinite(position) || position < 0) { throw new Error('Invalid audio position.'); }
+        const audio = this.tracks.get(this.active)?.audio;
+        if (!audio) { throw new Error('No speech is ready.'); }
+        audio.currentTime = Number.isFinite(audio.duration) ? Math.min(position, audio.duration) : position;
+    }
     clear(): void {
         this.release('lesson');
         this.release('answer');

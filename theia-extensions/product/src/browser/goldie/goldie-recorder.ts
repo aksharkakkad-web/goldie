@@ -6,12 +6,15 @@ export interface GoldieRecording {
 export interface GoldieRecorderState {
     readonly status: 'idle' | 'permission' | 'recording' | 'stopping' | 'ready' | 'error';
     readonly error?: string;
+    readonly inputLevel?: number;
+    readonly elapsedSeconds?: number;
 }
 export interface GoldieRecorderEnvironment {
     getStream(): Promise<MediaStream>;
     createRecorder(stream: MediaStream): MediaRecorder;
     schedule(callback: () => void, milliseconds: number): ReturnType<typeof setTimeout>;
     clear(timer: ReturnType<typeof setTimeout>): void;
+    monitorInput?(stream: MediaStream, report: (level: number, seconds: number) => void): () => void;
 }
 const maxBytes = 2 * 1024 * 1024;
 const browserEnvironment: GoldieRecorderEnvironment = {
@@ -22,7 +25,26 @@ const browserEnvironment: GoldieRecorderEnvironment = {
         return new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 64000 });
     },
     schedule: (callback, milliseconds) => setTimeout(callback, milliseconds),
-    clear: timer => clearTimeout(timer)
+    clear: timer => clearTimeout(timer),
+    monitorInput: (stream, report) => {
+        const context = new AudioContext();
+        const source = context.createMediaStreamSource(stream);
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 1024;
+        source.connect(analyser);
+        const samples = new Float32Array(analyser.fftSize);
+        const started = Date.now();
+        context.resume().catch(() => undefined);
+        const timer = setInterval(() => {
+            analyser.getFloatTimeDomainData(samples);
+            let energy = 0;
+            for (const sample of samples) { energy += sample * sample; }
+            report(Math.min(1, Math.sqrt(energy / samples.length) * 30), (Date.now() - started) / 1000);
+        }, 150);
+        return () => {
+            clearInterval(timer); source.disconnect(); analyser.disconnect(); context.close().catch(() => undefined);
+        };
+    }
 };
 
 /** Explicit, memory-only capture. Cancel invalidates even a pending OS permission result. */
@@ -39,6 +61,7 @@ export class GoldieRecorder {
     private clip?: GoldieRecording;
     private finishing?: Promise<GoldieRecording | undefined>;
     private resolveFinish?: (clip: GoldieRecording | undefined) => void;
+    private stopMonitor?: () => void;
     private readonly blur = (): void => { this.cancel(); };
     private readonly hidden = (): void => { if (globalThis.document?.hidden) { this.cancel(); } };
 
@@ -84,6 +107,13 @@ export class GoldieRecorder {
             };
             recorder.start(250);
             this.update({ status: 'recording' });
+            try {
+                this.stopMonitor = this.environment.monitorInput?.(stream, (inputLevel, elapsedSeconds) => {
+                    if (token === this.generation && this.current.status === 'recording') {
+                        this.update({ status: 'recording', inputLevel, elapsedSeconds });
+                    }
+                });
+            } catch { /* Recording remains usable if the input meter is unavailable. */ }
             this.timer = this.environment.schedule(() => { this.finish(); }, 30000);
         } catch {
             if (token === this.generation && !this.disposed) {
@@ -99,6 +129,7 @@ export class GoldieRecorder {
         const pending = this.finishing;
         this.clearTimer();
         this.update({ status: 'stopping' });
+        this.stopMonitor?.(); this.stopMonitor = undefined;
         try {
             this.recorder.stop();
             // Release the device immediately; the recorder still delivers its final data/stop events.
@@ -132,6 +163,7 @@ export class GoldieRecorder {
     }
     private stopTracks(stream: MediaStream): void { for (const track of stream.getTracks()) { track.stop(); } }
     private releaseRecorder(): void {
+        this.stopMonitor?.(); this.stopMonitor = undefined;
         const recorder = this.recorder;
         this.recorder = undefined;
         if (recorder) {
