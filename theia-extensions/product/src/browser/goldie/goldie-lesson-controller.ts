@@ -1,12 +1,16 @@
 // Copyright (C) 2026 Goldie contributors. SPDX-License-Identifier: MIT
 import type { AskResponse, CompleteResponse, OfferResponse, SessionActionRequest, SessionResponse, TeachResponse } from '@goldie/contracts';
+import { GoldieRecording } from './goldie-recorder';
+import { GoldiePractice } from './goldie-practice';
 import { GOLDIE_NONRETRYABLE_ERROR_CODE, GoldieService } from '../../common/goldie-service';
 import { createGoldieContext, GoldieContextSnapshot, KnowledgeLevel, parseGoldieContext } from './goldie-context';
 import { GoldieAudioAdapter, GoldieAudioPlayer, GoldieAudioState } from './goldie-audio-player';
 
 export type GoldiePhaseStatus = 'pending' | 'heard' | 'skipped' | 'familiar';
 export interface GoldieLessonState {
-    readonly view: 'idle' | 'offer' | 'lesson' | 'question' | 'recap';
+    readonly view: 'idle' | 'offer' | 'lesson' | 'question' | 'recap' | 'practice';
+    readonly practicePhaseId?: string;
+    readonly practiceAvailable?: boolean;
     readonly busy: boolean;
     readonly context?: GoldieContextSnapshot;
     readonly operation?: string;
@@ -42,6 +46,8 @@ function browserStorage(): Storage | undefined {
 
 /** Server progress is authoritative. Only clip positions and pending UI intent live in this controller. */
 export class GoldieLessonController {
+    practice?: GoldiePractice;
+    private readonly practices = new Map<string, GoldiePractice>();
     private current: GoldieLessonState = { view: 'idle', busy: false, phaseIndex: 0, statuses: {}, audioState: 'idle' };
     private readonly listeners = new Set<(state: GoldieLessonState) => void>();
     private generation = 0;
@@ -133,9 +139,12 @@ export class GoldieLessonController {
         }
         this.resetAudio();
         this.reference = undefined;
+        this.practice = undefined;
+        this.practices.clear();
         this.pendingClosure = undefined;
         this.update({ session: undefined, recap: undefined, offer: undefined, view: 'idle', statuses: {}, phaseIndex: 0,
-            explanation: undefined, answer: undefined, addOn: undefined, question: undefined, restored: false, audioState: 'idle' });
+            explanation: undefined, answer: undefined, addOn: undefined, question: undefined, practicePhaseId: undefined, practiceAvailable: false,
+            restored: false, audioState: 'idle' });
     }
     private requestContext(): { handoff: string; profile: GoldieContextSnapshot['profile'] | Record<string, unknown> } {
         const snapshot = this.current.context;
@@ -236,13 +245,101 @@ export class GoldieLessonController {
     async nextPhase(): Promise<void> { await this.advance('phase_completed'); }
     /** Pause before requesting the microphone; leave the original clip and timestamp intact. */
     async prepareVoiceQuestion(): Promise<boolean> {
-        if (!this.canCommand() || !this.phase || !['lesson', 'question'].includes(this.current.view)) { return false; }
+        if (!this.canCommand() || !this.phase || !this.current.session || this.terminal(this.current.session)
+            || !['lesson', 'question'].includes(this.current.view)) { return false; }
         this.audio.pause();
         this.update({ view: 'question', question: undefined, answer: undefined, addOn: undefined, audioState: 'paused' });
         await this.run(async token => {
-            if (this.current.session?.status === 'learning') { await this.sendAction('pause', token); }
+            if (this.current.session?.status !== 'paused') { await this.sendAction('pause', token); }
         });
         return !this.disposed && this.current.view === 'question' && !this.current.error && !this.pendingAction && !this.pendingClosure;
+    }
+    cancelVoiceQuestion(): void {
+        this.generation++;
+        this.retryWork = undefined;
+        this.audio.pause();
+        this.update({ busy: false, operation: undefined, error: undefined, retryable: false, audioState: 'paused' });
+    }
+    async submitVoiceQuestion(clip: GoldieRecording): Promise<void> {
+        const session = this.current.session;
+        const phase = this.phase;
+        if (!session || this.terminal(session) || !phase || this.current.view !== 'question' || !this.canCommand()) { return; }
+        if (!clip.blob.size || clip.blob.size > 2 * 1024 * 1024 || clip.mimeType.split(';')[0] !== 'audio/webm') {
+            this.update({ error: 'Record a WebM question under 2 MiB.', retryable: false }); return;
+        }
+        const requestId = globalThis.crypto.randomUUID();
+        const handoff = this.requestContext().handoff;
+        let dataBase64: string | undefined;
+        let question: string | undefined;
+        let answer: AskResponse | undefined;
+        let refreshed = false;
+        this.answerAudioReady = false;
+        await this.run(async token => {
+            if (!question) {
+                this.update({ operation: 'transcribe' });
+                if (!dataBase64) {
+                    const bytes = new Uint8Array(await clip.blob.arrayBuffer());
+                    if (!this.valid(token)) { return; }
+                    let binary = '';
+                    for (let index = 0; index < bytes.length; index += 8192) { binary += String.fromCharCode(...bytes.subarray(index, index + 8192)); }
+                    dataBase64 = btoa(binary);
+                }
+                const result = await this.service.transcribe({ sessionId: session.sessionId, phaseId: phase.id, requestId,
+                    mimeType: 'audio/webm', dataBase64 });
+                if (!this.valid(token)) { return; }
+                question = result.text;
+                this.update({ question });
+            }
+            if (!answer) {
+                this.update({ operation: 'ask' });
+                const result = await this.mutate(this.service.ask({ sessionId: session.sessionId, phaseId: phase.id, requestId, question, handoff }));
+                if (!this.valid(token)) { return; }
+                answer = result;
+                this.update({ answer });
+            }
+            if (!refreshed) {
+                const saved = await this.service.getSession(session.sessionId);
+                if (!this.valid(token)) { return; }
+                this.applySession(saved);
+                refreshed = true;
+            }
+            // Keep a successful answer when speech fails. Retrying never transcribes or asks again.
+            if (answer.kind === 'answer') { await this.speak(answer.contentId, 'answer', token); }
+        });
+    }
+    async openPractice(phaseId = this.current.practicePhaseId): Promise<void> {
+        const session = this.current.session;
+        if (!session || !phaseId || !session.completedIds.includes(phaseId) || !this.canCommand()) { return; }
+        this.audio.pause();
+        this.practice = this.practices.get(phaseId);
+        this.update({ view: 'practice', practicePhaseId: phaseId, audioState: 'paused' });
+        await this.run(async token => {
+            this.update({ operation: 'practice' });
+            let practice = this.practices.get(phaseId);
+            if (!practice) {
+                const cached = await this.service.getPractice(session.sessionId, phaseId);
+                if (!this.valid(token)) { return; }
+                const batch = cached ?? await this.service.generatePractice(session.sessionId, phaseId);
+                if (!this.valid(token)) { return; }
+                practice = new GoldiePractice(batch.questions);
+                this.practices.set(phaseId, practice);
+            }
+            this.practice = practice;
+            this.update({ practiceAvailable: true });
+        });
+    }
+    async continueAfterPractice(): Promise<void> {
+        if (this.current.view !== 'practice' || !this.canCommand()) { return; }
+        this.practice = undefined;
+        if (this.current.session && this.terminal(this.current.session)) {
+            this.update({ view: 'recap', practicePhaseId: undefined, practiceAvailable: false }); return;
+        }
+        await this.run(async token => {
+            await this.sendAction('resume', token);
+            if (!this.valid(token)) { return; }
+            this.update({ view: 'lesson', practicePhaseId: undefined, practiceAvailable: false });
+            await this.teach(token);
+        });
     }
     async askQuestion(question: string): Promise<void> {
         if (!question.trim() || question.trim().length > 1000) { return; }
@@ -250,9 +347,11 @@ export class GoldieLessonController {
     }
     async explainMore(): Promise<void> { await this.interrupt(undefined, true); }
     async resumeLesson(): Promise<void> {
-        if (this.current.view !== 'question' || !this.canCommand()) { return; }
+        if (this.current.view !== 'question' || this.disposed || this.current.busy || this.pendingClosure) { return; }
         this.audio.pause();
         await this.run(async token => {
+            if (this.pendingAction) { await this.sendAction(this.pendingAction.action, token); }
+            if (!this.valid(token)) { return; }
             await this.sendAction('resume', token);
             if (!this.valid(token)) { return; }
             this.audio.select('lesson');
@@ -269,7 +368,7 @@ export class GoldieLessonController {
         if (!this.current.busy && this.retryWork) { await this.run(this.retryWork); }
     }
     async endSession(): Promise<void> {
-        if (!this.current.session || this.current.view === 'recap') { return; }
+        if (!this.current.session || this.terminal(this.current.session)) { return; }
         // Cancel media immediately, but order closure after any outstanding state mutation.
         const mutation = this.mutation;
         this.generation++;
@@ -294,6 +393,7 @@ export class GoldieLessonController {
         if (this.current.view !== 'lesson' || !this.canCommand() || !this.phase) { return; }
         this.resetAudio();
         this.update({ audioState: 'idle' });
+        const coveredPhaseId = this.phase.id;
         let advanced = false;
         await this.run(async token => {
             if (!advanced) {
@@ -304,7 +404,18 @@ export class GoldieLessonController {
             }
             if (!this.valid(token)) { return; }
             this.update({ explanation: undefined, answer: undefined, addOn: undefined, question: undefined, audioState: 'idle' });
-            if (!this.current.session?.activePhaseId) { await this.close('completed', token); } else if (this.current.session.status === 'learning') {
+            if (action === 'phase_completed') {
+                if (!this.current.session?.activePhaseId) {
+                    await this.close('completed', token);
+                } else if (this.current.session.status === 'learning') {
+                    await this.sendAction('pause', token);
+                }
+                if (!this.valid(token)) { return; }
+                this.practice = undefined;
+                this.update({ view: 'practice', practicePhaseId: coveredPhaseId, practiceAvailable: true });
+            } else if (!this.current.session?.activePhaseId) {
+                await this.close('completed', token);
+            } else if (this.current.session.status === 'learning') {
                 await this.teach(token);
             }
         });

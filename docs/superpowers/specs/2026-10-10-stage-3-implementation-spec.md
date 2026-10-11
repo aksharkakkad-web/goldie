@@ -49,7 +49,7 @@ Capture and inspect native screenshots of recording controls and practice. If a 
 - [x] Fetch main and inspect existing code/contracts; preserve existing orb work.
 - [x] Rewrite spec for latest voice-only questions and per-phase practice.
 - [x] Implement/test independent capture, local practice state and practice React component.
-- [ ] Receive Akshar's pushed PRD/contracts and wire voice/practice requests.
+- [x] Receive Akshar's pushed PRD/contracts and wire voice/practice requests locally against `34a916f`.
 - [x] Product build/lint, 76 focused checks and inspected native screenshots. Native screen recording is not available through the current capture tool.
 - [ ] Joint real-service microphone/answer/exact-resume verification.
 
@@ -59,8 +59,12 @@ Rishit subsequently authorized merging this partial frontend checkpoint to main.
 
 Implementation follows the documented final-data-before-stop-event flow of [MediaRecorder](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder) and permission/track lifecycle of [getUserMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia). Existing source remains MIT; no external source is copied.
 
-## Implementation checkpoint
+## Historical foundation checkpoint
 
 Native setup now includes an explicitly labelled local microphone check with recording, stop, preview and discard. It makes no backend upload. The old prepared typed-question flow remains intact until agreed voice endpoints permit an atomic replacement; voice-only Q&A is not yet shipped. Practice state/component exist and are tested but are not mounted into lesson progression yet: they need Akshar's question contract and the phase-boundary integration. These are incomplete integration tasks, not completed Stage 3 features.
 
 See `docs/stage3-proof/VERIFICATION.md` for fresh evidence and remaining acceptance work.
+
+## Frontend integration update
+
+Voice sending and per-phase practice are wired locally. See `docs/stage3-proof/FRONTEND_INTEGRATION.md` for fresh cumulative tests and native fixture evidence. Gemini/ElevenLabs credentials and the human joint walkthrough remain required. Rishit subsequently authorized merging this frontend integration to main; deployment and overall Stage 3 sign-off are not included.

@@ -82,12 +82,13 @@ test('accepted lesson requests standard text then speech by content ID', async (
     assert.equal(calls.teach[0].detail, 'standard'); assert.deepEqual(calls.speech[0], { sessionId: 's1', contentId: 'p0-standard' });
     assert.equal(controller.state.statuses.p0, 'pending'); controller.dispose();
 });
-test('natural end auto-advances on server; skip, familiarity and recap remain authoritative', async () => {
+test('natural end offers practice before continuing;  skip, familiarity and recap remain authoritative', async () => {
     const { controller, calls } = setup(); await start(controller); clip().emit('ended'); await settled(controller);
     assert.equal(controller.state.phaseIndex, 1); assert.equal(controller.state.statuses.p0, 'heard');
+    assert.equal(controller.state.view, 'practice'); await controller.continueAfterPractice();
     await controller.skipPhase(); await controller.markFamiliar();
     assert.deepEqual(controller.state.statuses, { p0: 'heard', p1: 'skipped', p2: 'familiar' });
-    assert.deepEqual(calls.action.map(action => action.action), ['phase_completed', 'skip', 'already_know']);
+    assert.deepEqual(calls.action.map(action => action.action), ['phase_completed', 'pause', 'resume', 'skip', 'already_know']);
     assert.equal(controller.state.view, 'recap'); assert.equal(controller.state.session.status, 'completed');
     assert.equal(controller.state.recap.recap, 'Server recap: completed, skipped and self-reported familiarity.'); controller.dispose();
 });
@@ -216,7 +217,7 @@ test('real widget presents architecture estimate, conceptual scope, explicit tex
     await controller.askQuestion('What is an API?'); const answer = renderWidget(controller.state);
     assert.doesNotMatch(answer, /Supported questions/);
     const answerDetails = renderWidget(controller.state, { detailsOpen: true });
-    assert.match(answerDetails, /Supported questions/); assert.match(answerDetails, /What is an API/); controller.dispose();
+    assert.match(answerDetails, /You could ask next/); assert.match(answerDetails, /What is an API/); controller.dispose();
 });
 
 test('new narrow dock gets readable width while restored user width is respected', async () => {
@@ -245,7 +246,7 @@ test('released answer events after resume cannot mark the lesson ended', async (
 test('mark read from a paused lesson explicitly resumes before server completion', async () => {
     const { controller, calls } = setup(); await start(controller); await controller.playPause(); await controller.nextPhase();
     assert.equal(controller.state.phaseIndex, 1); assert.equal(controller.state.statuses.p0, 'heard');
-    assert.deepEqual(calls.action.map(value => value.action), ['pause', 'resume', 'phase_completed']); controller.dispose();
+    assert.deepEqual(calls.action.map(value => value.action), ['pause', 'resume', 'phase_completed', 'pause']); controller.dispose();
 });
 
 test('ending after a lost skip response derives the recap progress from server', async () => {
@@ -262,7 +263,7 @@ test('natural end while the play promise settles still completes exactly one pha
     MediaElement.prototype.play = async function () { await play.call(this); if (first) { first = false; this.emit('ended'); } };
     try {
         await start(controller); await settled(controller);
-        assert.equal(controller.state.phaseIndex, 1); assert.deepEqual(calls.action.map(value => value.action), ['phase_completed']);
+        assert.equal(controller.state.phaseIndex, 1); assert.deepEqual(calls.action.map(value => value.action), ['phase_completed', 'pause']);
     } finally { MediaElement.prototype.play = play; controller.dispose(); }
 });
 
@@ -376,6 +377,7 @@ for (const count of [1, 2, 5]) {
         await start(fixture.controller);
         for (const id of ids) {
             assert.equal(fixture.controller.state.session.activePhaseId, id); await fixture.controller.nextPhase();
+            assert.equal(fixture.controller.state.view, 'practice'); await fixture.controller.continueAfterPractice();
         }
         assert.equal(fixture.controller.state.view, 'recap'); assert.deepEqual(Object.keys(fixture.controller.state.statuses), ids);
         assert.ok(Object.values(fixture.controller.state.statuses).every(status => status === 'heard')); fixture.controller.dispose();
@@ -514,4 +516,49 @@ test('failed server pause prevents microphone preparation without losing progres
     service.action = async () => { throw new Error('Pause failed'); };
     assert.equal(await controller.prepareVoiceQuestion(), false);
     assert.equal(original.currentTime, 17.25); assert.equal(controller.state.phaseIndex, 0); controller.dispose();
+});
+
+const recording = () => ({ blob: new Blob(['audio'], {type:'audio/webm;codecs=opus'}), mimeType:'audio/webm;codecs=opus' });
+test('voice lost answer response retries exact intent and speech failure retries only speech', async () => {
+    const {controller, service, calls} = setup(); await start(controller); const original = clip(); original.currentTime = 17.25;
+    let transcribes=0; const requests=[]; let lost=true; let voiceFail=true; const ask=service.ask; const speak=service.speech;
+    service.transcribe=async request => { schemas.TranscribeRequestSchema.parse(request); transcribes++; assert.equal(request.mimeType,'audio/webm'); return {text:'An unseen question'}; };
+    const answers=new Map(); service.ask=async request => { requests.push(clone(request)); let answer=answers.get(request.requestId); if(!answer){ answer=await ask(request); answers.set(request.requestId,answer); } if(lost){lost=false;throw new Error('Lost response');} return answer; };
+    service.speech=async request => { if(request.contentId==='answer-1' && voiceFail){voiceFail=false;throw new Error('Speech unavailable');} return speak(request); };
+    assert.equal(await controller.prepareVoiceQuestion(),true); await controller.submitVoiceQuestion(recording());
+    assert.equal(controller.state.question,'An unseen question'); assert.ok(controller.state.error); await controller.retry();
+    assert.equal(controller.state.answer.kind,'answer'); assert.ok(controller.state.error); await controller.retry();
+    assert.deepEqual(requests[0],requests[1]); assert.equal(calls.ask.length,1); assert.equal(transcribes,1);
+    await controller.resumeLesson(); assert.equal(original.currentTime,17.25); assert.equal(original.plays,2); controller.dispose();
+});
+test('cancelled voice transcription ignores late text and never asks', async () => {
+    const {controller, service, calls} = setup(); await start(controller); const pending=deferred(); service.transcribe=()=>pending.promise;
+    await controller.prepareVoiceQuestion(); const sending=controller.submitVoiceQuestion(recording()); await tick(); controller.cancelVoiceQuestion();
+    pending.resolve({text:'Discard this'}); await sending; assert.equal(calls.ask.length,0); assert.equal(controller.state.question,undefined); controller.dispose();
+});
+test('phase practice is explicit, cached and local, including final closed session', async () => {
+    const {controller,service,calls}=setup(1); await start(controller); let reads=0, generates=0;
+    service.getPractice=async()=>{reads++;return null;}; service.generatePractice=async()=>{generates++;return {practiceId:'b',phaseId:'p0',questions:[0,1,2].map(i=>({id:'q'+i,question:'Question '+i,modelAnswer:'Answer '+i}))};};
+    await controller.nextPhase(); assert.equal(controller.state.view,'practice'); assert.equal(controller.state.session.status,'completed'); assert.equal(generates,0);
+    await controller.openPractice(); controller.practice.answer('My answer'); controller.practice.reveal(); await controller.continueAfterPractice();
+    assert.equal(controller.state.view,'recap'); await controller.openPractice('p0'); assert.equal(controller.practice.response,'My answer'); assert.ok(controller.practice.modelAnswer);
+    assert.equal(reads,1); assert.equal(generates,1); assert.equal(calls.teach.length,1); assert.equal(calls.complete.length,1); controller.dispose();
+});
+test('voice follow-up gets a new intent without replacing the original lesson clip', async () => {
+    const {controller,service,calls}=setup(); await start(controller); const original=clip(); original.currentTime=9.5;
+    let n=0; service.transcribe=async()=>({text:'Question '+(++n)});
+    await controller.prepareVoiceQuestion(); await controller.submitVoiceQuestion(recording());
+    await controller.prepareVoiceQuestion(); await controller.submitVoiceQuestion(recording());
+    assert.equal(calls.ask.length,2); assert.notEqual(calls.ask[0].requestId,calls.ask[1].requestId);
+    await controller.resumeLesson(); assert.equal(original.currentTime,9.5); assert.equal(calls.teach.length,1); controller.dispose();
+});
+test('lost transcription retries one request ID; duplicate Send and end suppress late results', async () => {
+    const {controller,service,calls}=setup(); await start(controller); const requests=[]; let lost=true;
+    service.transcribe=async request=>{requests.push(clone(request)); if(lost){lost=false;throw new Error('Lost transcription');} return {text:'Why validate?'};};
+    await controller.prepareVoiceQuestion(); await controller.submitVoiceQuestion(recording()); await controller.retry();
+    assert.deepEqual(requests[0],requests[1]); assert.equal(calls.ask.length,1);
+    await controller.prepareVoiceQuestion(); const gate=deferred(); service.transcribe=()=>gate.promise;
+    const pending=controller.submitVoiceQuestion(recording()); await tick(); await controller.submitVoiceQuestion(recording());
+    await controller.endSession(); gate.resolve({text:'Late text'}); await pending;
+    assert.equal(calls.ask.length,1); assert.equal(controller.state.view,'recap'); controller.dispose();
 });

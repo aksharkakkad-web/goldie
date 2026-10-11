@@ -235,8 +235,13 @@ in PR #3; the human together-run checkpoint remains open.
 
 ### Stage 3 development checkpoint
 
-Goldie setup/details now has a **Microphone check**: Test microphone → Stop recording → local preview → Discard. Capture stops after 30 seconds; cancel, window blur, panel/drawer closure and navigation discard it. Nothing is uploaded by this check. Backend voice/practice contracts and RPC methods are implemented; use `docs/stage3-integration.md` to wire them. Ordinary voice Q&A and per-phase practice are not integrated yet; see `docs/superpowers/specs/2026-10-10-stage-3-implementation-spec.md`. The existing check can capture before acceptance and End session does not cancel it: those lifecycle gaps must be fixed before the Stage 3 product gate.
+Stage 3 now has voice-only questions and optional phase practice wired to Akshar's contracts. In an accepted open lesson: Ask Goldie → speak → Send question; Cancel discards. The 30-second limit stops and waits for Send/Cancel. Transcript is read-only. Retry preserves the question intent; speech failures retain text. Resume explicitly returns to the original lesson clip. Covered phases offer Practice / Continue; closed recaps allow practice for covered phases.
 
+Run `yarn --frozen-lockfile` after pulling dependency changes. Stale installed Zod versions can make backend typechecking exhaust memory. On this Mac, backend and shared contracts must both resolve locked Zod 4.6.5. Include `/opt/homebrew/bin` in PATH for FFmpeg regression checks.
+
+Actual local Whisper is configured in ignored `backend/.env`; Gemini and ElevenLabs keys still need private configuration. See `docs/stage3-proof/FRONTEND_INTEGRATION.md` for 261 cumulative checks, native fixture screenshots and the remaining human/live-provider gate. Do not call overall Stage 3 complete from fixture evidence.
+
+Avoid running `yarn electron build` against the same outputs while `yarn electron watch` is bundling: stop that watcher for a full build, then restart it. Both can otherwise race on the same source map. For normal source changes, let watch finish and reload; restart Electron if layout restoration stalls.
 Fresh focused verification:
 
 ```sh

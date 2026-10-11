@@ -683,9 +683,80 @@
     .goldie-orb-halo { transition: none; }
 }
 
-/* Stage 3 memory-only microphone check, before backend contract integration. */
-.goldie-microphone-check { padding: 12px; border: 1px solid var(--theia-widget-border); border-radius: 8px; margin-bottom: 16px; }
-.goldie-microphone-check h3 { margin: 0 0 8px; }
-.goldie-microphone-check .theia-button { margin: 4px 6px 4px 0; }
-.goldie-microphone-check audio { display: block; width: 100%; margin-top: 8px; }
-.goldie-practice-view textarea { box-sizing: border-box; width: 100%; margin-top: 8px; color: var(--theia-input-foreground); background: var(--theia-input-background); border: 1px solid var(--theia-input-border); padding: 8px; }
+/* Voice questions are an explicit capture state inside the active lesson. */
+.goldie-voice-question {
+    margin: 12px 0 8px;
+    padding: 12px;
+    border: 1px solid var(--theia-panel-border);
+    border-radius: 6px;
+    background: var(--theia-editorWidget-background);
+}
+
+.goldie-voice-question.active { border-color: color-mix(in srgb, var(--theia-focusBorder) 60%, var(--theia-panel-border)); }
+.goldie-panel .goldie-voice-start { display: flex; width: 100%; min-height: 36px; align-items: center; justify-content: center; gap: 7px; }
+.goldie-voice-question .goldie-note { margin-top: 9px; line-height: 1.45; }
+.goldie-voice-error { margin: 9px 0 0; color: var(--theia-errorForeground); font-size: 11px; line-height: 1.45; }
+
+.goldie-recording-status {
+    display: flex;
+    min-height: 28px;
+    align-items: center;
+    gap: 9px;
+    color: var(--theia-descriptionForeground);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.goldie-recording-dot {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--theia-errorForeground);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--theia-errorForeground) 16%, transparent);
+}
+
+.goldie-voice-question .goldie-form-actions .theia-button { flex: 1 1 0; min-width: 0; min-height: 32px; white-space: normal; }
+
+.goldie-practice-actions { display: flex; gap: 8px; margin-top: 18px; }
+.goldie-practice-actions .theia-button { flex: 1 1 0; min-width: 0; min-height: 36px; white-space: normal; }
+.goldie-text-action {
+    margin-top: 18px;
+    padding: 4px 0;
+    border: 0;
+    background: transparent;
+    color: var(--theia-textLink-foreground);
+    font: inherit;
+    cursor: pointer;
+}
+
+.goldie-practice-shell .goldie-practice-view > h3 { margin: 4px 0 18px; font-size: 17px; line-height: 1.4; }
+.goldie-practice-view label { display: block; margin-top: 8px; font-size: 11px; font-weight: 600; }
+.goldie-practice-view textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 96px;
+    margin-top: 8px;
+    padding: 9px;
+    resize: vertical;
+    border: 1px solid var(--theia-input-border, var(--theia-panel-border));
+    border-radius: 4px;
+    background: var(--theia-input-background);
+    color: var(--theia-input-foreground);
+    font: inherit;
+    line-height: 1.45;
+}
+
+.goldie-practice-view > .theia-button { width: 100%; min-height: 34px; margin-top: 10px; white-space: normal; }
+.goldie-practice-view .goldie-answer { margin-top: 12px; }
+.goldie-recap-practice { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--theia-panel-border); }
+.goldie-recap-practice > div { display: grid; gap: 7px; margin-top: 10px; }
+.goldie-recap-practice .theia-button { width: 100%; min-height: 32px; text-align: left; white-space: normal; }
+
+@container (max-width: 360px) {
+    .goldie-practice-actions { flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .goldie-recording-dot { box-shadow: none; }
+}
