@@ -17,9 +17,10 @@ Run the sample prompt, browse the files and handoff, then Prepare lesson. Withou
 a configured backend the coding replay works and lesson preparation explains that
 the live mentor is unavailable. It never substitutes prepared answers for live AI.
 
-The Node server serves merged desktop shader strings/branding from allowlisted
-repository paths. Keep this application inside the repo; there is no static export
-or public deployment in this change.
+The local Node server serves merged desktop shader strings/branding from
+allowlisted repository paths. A separate, approved temporary judging deployment
+is now available at https://goldie-judge-demo.vercel.app; see
+[deployment access, limits and restart instructions](deploy/README.md).
 
 ## Connect a verified backend
 
@@ -177,8 +178,11 @@ The contract check removes only its own temporary store. Broad desktop/Electron
 tests are not part of this independent app's verification; this clean worktree
 does not contain installed monorepo dependencies.
 
-## Public sharing is a separate gate
+## Temporary judging access
 
-This is local-only, not a production multi-user backend. Before a Discord/public
-link, approve hosting and define session isolation, paid-call budgets, abuse limits
-and production secret storage. Nothing was pushed, merged remotely or deployed.
+Akshar approved the Vercel website plus protected temporary Cloudflare connection.
+Judges use the supplied username/passcode; real lessons, questions and practice
+route to the existing isolated Mac backend. The Mac must remain awake and online.
+The shared 12,000-character speech/500-POST cap preserves credits; no provider keys
+leave the Mac. See the deployment runbook above. This is not a production multi-user
+backend or independent cloud-hosting claim. No Git push/merge was performed.

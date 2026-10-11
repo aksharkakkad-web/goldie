@@ -2,11 +2,13 @@
 const { chromium, expect } = require('playwright/test');
 const assert = require('node:assert/strict');
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
+const judgeConfig = process.env.GOLDIE_JUDGE_CONFIG ? JSON.parse(require('node:fs').readFileSync(process.env.GOLDIE_JUDGE_CONFIG, 'utf8')) : null;
+const judgeAccess = judgeConfig ? { httpCredentials: { username: judgeConfig.username, password: judgeConfig.password } } : {};
 
 (async () => {
     const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
     try {
-        const context = await browser.newContext({ permissions: ['microphone'], viewport: { width: 1440, height: 900 } });
+        const context = await browser.newContext({ ...judgeAccess, permissions: ['microphone'], viewport: { width: 1440, height: 900 } });
         await context.addInitScript(() => {
             // Replace only external audio playback, not the controller or DOM.
             globalThis.AudioContext = undefined;
@@ -162,7 +164,7 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
         await page.keyboard.press('Tab');
         assert.ok(await page.evaluate(() => document.activeElement !== document.body), 'Keyboard reaches an interactive control');
         await context.close();
-        const offline = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        const offline = await browser.newPage({ ...judgeAccess, viewport: { width: 1440, height: 900 } });
         // No test context may fall through to a configured paid backend.
         await offline.route('**/demo-config', route => route.fulfill({ json: { connected: false, reachable: false } }));
         await offline.route('**/api/**', route => route.fulfill({ status: 503, json: { error: {
