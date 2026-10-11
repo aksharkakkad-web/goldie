@@ -34,7 +34,14 @@ export function createDemoServer({ backendUrl = '' } = {}) {
             }
             const path = new URL(req.url, `http://${req.headers.host}`).pathname;
             if (path === '/demo-config' && req.method === 'GET') {
-                res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ connected: Boolean(upstream) })); return;
+                let reachable = false;
+                if (upstream) {
+                    try {
+                        const health = await fetch(new URL('/health', upstream), { signal: AbortSignal.timeout(1500), redirect: 'error' });
+                        reachable = health.ok && (await health.json()).ok === true;
+                    } catch { /* Local availability, not provider validation or a paid request. */ }
+                }
+                res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ connected: Boolean(upstream), reachable })); return;
             }
             if (route.test(path)) {
                 if (!['GET', 'POST'].includes(req.method)) { json(405, 'METHOD_NOT_ALLOWED', 'Unsupported request.'); return; }

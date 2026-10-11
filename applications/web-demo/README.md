@@ -23,6 +23,30 @@ or public deployment in this change.
 
 ## Connect a verified backend
 
+To start the website and an isolated backend together from this checkout, point
+at an already built Stage 3 checkout and the existing ignored server environment:
+
+```sh
+GOLDIE_DEMO_BACKEND_ROOT=/absolute/stage3-checkout \
+GOLDIE_DEMO_ENV_FILE=/absolute/existing/backend/.env \
+yarn --cwd applications/web-demo start:connected
+```
+
+The launcher checks local credential presence and Whisper/FFmpeg/model paths, then
+starts backend port 8797 and website port 4317. It does not generate model output
+or speech. Its own data/cache lives in this checkout's ignored
+`backend/.data/web-demo`; the desktop store and environment file are unchanged.
+Ctrl-C closes only these two owned services. `GOLDIE_DEMO_BACKEND_PORT`,
+`GOLDIE_DEMO_PORT` and `GOLDIE_DEMO_DATA_DIR` override these defaults. Do not run it
+on occupied ports. The backend must already be built and have its dependencies.
+
+On Akshar's Mac, the current connected preview uses
+`/Users/aksharkakkad/.codex/worktrees/stage2-product-review/goldie` as the backend
+checkout and `/Users/aksharkakkad/goldie/backend/.env` as the existing environment.
+Only the launcher reads that file; no credentials enter the website or Git.
+
+Alternatively, start the two processes manually:
+
 Use a separately started Stage 3 backend with an isolated store and port. Do not
 reuse/stop the desktop's process or point two processes at the same store. In a
 terminal at the verified backend checkout, with its existing server-side credentials
@@ -42,8 +66,8 @@ GOLDIE_DEMO_BACKEND_URL=http://127.0.0.1:8797 yarn --cwd applications/web-demo s
 holds no API credentials. Only allowlisted paths can reach an explicitly configured
 loopback backend. Cookies, authorization and browser Origin headers are not forwarded;
 backend origin restrictions are not weakened. The web server rejects external Host
-and Origin headers and listens only on 127.0.0.1. “Mentor configured” means a target
-was supplied, not that keys, credits or transcription readiness were verified.
+and Origin headers and listens only on 127.0.0.1. “Backend connected” confirms only
+the local `/health` response—not provider credit balance or live generation.
 
 Preparing a lesson can use Gemini credits; accepting and asking can use
 Gemini/ElevenLabs credits. No automatic paid retry or provider fallback is added.
@@ -58,6 +82,9 @@ backend, not a cloud speech service.
   are illustrative; the sample app is not compiled/executed or claimed as verified.
 - Merged palette/assets/shaders, waveform-reactive orb, reduced-motion handling,
   static WebGL fallback and responsive shell.
+- A persistent Next step cue and purple button glow guide replay, acceptance,
+  lessons, optional practice and final review. Waiting states do not urge another
+  click; reduced-motion keeps a static highlight.
 - Backend offers, opt-in variable-phase lessons, pause/resume, skip, distinct
   self-reported familiarity, read completion and early end. Speech failure leaves
   text/coverage/exit usable.
@@ -87,11 +114,24 @@ Model and speech providers are controlled. It covers offer, session, teach, Q&A,
 actions and closed-session practice, not actual microphone transcription/audio.
 No credentials or paid calls are used in these checks.
 
-**Full live browser walkthrough: not verified.** At handoff the main thread reports
-insufficient ElevenLabs credits; Stage 3 backend/native integration is not merged
-into this website baseline. The default preview therefore starts disconnected.
-Connect the verified backend and complete the live gate before calling this a live
-public AI demo. No other checkout or desktop/backend/shared source was changed.
+**Credit-preserving testing policy:** real ElevenLabs voice remains enabled for
+explicit user lesson/question use. Automated browser checks intercept every API
+request in both successful and unavailable-service contexts, even when the preview
+has a real backend configured. No browser/computer-voice substitution, automatic
+paid retry or changed lesson-content limits were added. Do not run live voice smoke
+scripts again unless Akshar explicitly requests them. Local health checks, reveal,
+cached review, and replay do not generate paid speech. New lesson/answer text does;
+exact speech cache hits reuse the existing audio.
+
+**Full live browser walkthrough: not verified.** On October 11, Akshar topped up;
+one explicitly requested real 1050-character ElevenLabs check returned valid MP3
+audio, resolving the earlier quota failure. After the request to preserve credits,
+only controlled-provider tests and local readiness/health checks were run. The
+connected preview now uses the existing Stage 3 backend and server-side keys, with
+local transcription dependencies present. The human live walkthrough is still
+open; provider success is not proof of the complete browser journey. The basic
+`start` command still defaults to disconnected; use `start:connected` as above.
+No other checkout or desktop/backend/shared source was changed.
 
 ## Commands
 

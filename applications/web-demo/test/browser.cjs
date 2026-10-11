@@ -14,6 +14,13 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
                 currentTime = 12; ended = false; preload = '';
                 async play() {} pause() {} load() {} removeAttribute() {}
             };
+            const NativeRecorder = globalThis.MediaRecorder;
+            globalThis.MediaRecorder = class extends NativeRecorder {
+                constructor(...args) {
+                    super(...args); globalThis.demoTestRecordedBytes = 0;
+                    this.addEventListener('dataavailable', event => { globalThis.demoTestRecordedBytes += event.data.size; });
+                }
+            };
         });
         const page = await context.newPage(); const errors = []; const calls = [];
         page.on('pageerror', e => errors.push(e.message));
@@ -21,7 +28,7 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
         const fresh = () => ({ sessionId: 'controlled-session', projectId: 'controlled-project', snapshotRevision: 1,
             phases: [{ id: 'frontend', title: 'The frontend boundary', objective: 'Understand form state', description: 'Local state is not a trust boundary.' }, { id: 'api', title: 'The server boundary', objective: 'Validate on the server', description: 'Trust only server checks.' }],
             activePhaseId: 'frontend', completedIds: [], skippedIds: [], alreadyKnowIds: [], questionHistory: [], status: 'learning', lastEvaluatedRevision: 1 });
-        await page.route('**/demo-config', route => route.fulfill({ json: { connected: true } }));
+        await page.route('**/demo-config', route => route.fulfill({ json: { connected: true, reachable: true } }));
         await page.route('**/api/**', async route => {
             const request = route.request(); const path = new URL(request.url()).pathname;
             const body = request.method() === 'POST' ? request.postDataJSON() : undefined;
@@ -47,8 +54,12 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
             await route.fulfill({ json });
         });
         const response = await page.goto(targetUrl); assert.equal(response.status(), 200, 'UI should be served');
+        await expect(page.getByRole('button', { name: 'Run sample prompt' })).toHaveClass(/next-action/);
+        await expect(page.locator('#next-step')).toContainText('Run sample prompt');
+        assert.notEqual(await page.locator('#replay-action').evaluate(el => getComputedStyle(el).boxShadow), 'none');
         await page.getByRole('button', { name: 'Run sample prompt' }).click();
         await page.getByRole('button', { name: 'Skip replay' }).click();
+        await expect(page.getByRole('button', { name: 'Prepare lesson', exact: true })).toHaveClass(/next-action/);
         await page.getByRole('button', { name: 'Prepare lesson', exact: true }).click();
         await page.getByRole('button', { name: 'Not now', exact: true }).click();
         assert.equal(calls.filter(c => c.path === '/api/sessions').length, 0);
@@ -66,6 +77,7 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
         await page.getByRole('button', { name: 'Continue lesson', exact: true }).click();
         await page.getByRole('button', { name: 'Ask Goldie', exact: true }).click();
         await expect(page.getByText('Listening to your question…', { exact: true })).toBeVisible();
+        await page.waitForFunction(() => globalThis.demoTestRecordedBytes > 0);
         await page.getByRole('button', { name: 'Send question', exact: true }).click();
         await expect(page.getByText(/A malicious client can bypass/)).toBeVisible();
         await page.getByRole('button', { name: 'Resume lesson', exact: true }).click();
@@ -93,10 +105,16 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
         await page.screenshot({ path: '/tmp/goldie-web-desktop.png', fullPage: true });
         await page.emulateMedia({ reducedMotion: 'reduce' });
         assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true);
+        assert.equal(await page.locator('.next-action').first().evaluate(el => getComputedStyle(el).animationName), 'none');
         await page.keyboard.press('Tab');
         assert.ok(await page.evaluate(() => document.activeElement !== document.body), 'Keyboard reaches an interactive control');
         await context.close();
         const offline = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        // No test context may fall through to a configured paid backend.
+        await offline.route('**/demo-config', route => route.fulfill({ json: { connected: false, reachable: false } }));
+        await offline.route('**/api/**', route => route.fulfill({ status: 503, json: { error: {
+            code: 'DEMO_BACKEND_UNAVAILABLE', message: 'The live mentor is not connected. The coding replay still works.', retryable: true
+        } } }));
         await offline.goto(targetUrl);
         await offline.getByRole('button', { name: 'Run sample prompt' }).click();
         await offline.getByRole('button', { name: 'Skip replay' }).click();

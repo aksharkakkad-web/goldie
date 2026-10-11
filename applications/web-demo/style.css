@@ -103,6 +103,12 @@ svg { width: 19px; height: 19px; flex: none; }
 .mentor-content { position: relative; overflow-y: auto; min-height: 0; padding: 10px 25px 20px; flex: 1; scrollbar-width: thin; scrollbar-color: #33333f transparent; }.mentor-panel[data-view=idle] .mentor-content,.mentor-panel[data-view=declined] .mentor-content { flex: 0 1 auto; max-height: 300px; }
 .mentor-content h2 { font-size: 22px; line-height: 1.23; font-weight: 480; letter-spacing: -.035em; margin: 11px 0 13px; white-space: pre-line; color: #ebeaf0; }.mentor-content p { font-size: 12px; line-height: 1.75; color: #a1a8b6; margin: 0 0 17px; }.mentor-content .section-label { color: #a194b7; font-size: 10px; }.mentor-content .quiet-note { color: #727b89; font-size: 10px; line-height: 1.6; margin: 12px 0 0; }.mentor-content .objective { color: #b2b6c3; }
 .action-row { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin: 17px 0 10px; }
+.next-step { flex: 0 0 auto; margin: 10px 17px 0; padding: 10px 12px; border: 1px solid #483858; border-radius: 6px; background: #15101d; }
+.next-step > span { display: flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 600; color: #ceb6f2; }
+.next-step > span::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #be92f4; box-shadow: 0 0 7px #ad77db; }
+.next-step p { font-size: 11px; line-height: 1.5; color: #b7a9c8; margin: 5px 0 0; }
+.next-action:not(:disabled) { outline: 1px solid #bf93ef; outline-offset: 2px; box-shadow: 0 0 0 4px #ac7ad51a, 0 0 16px #aa73d94d; animation: next-glow 2s ease-in-out 3; }
+@keyframes next-glow { 50% { box-shadow: 0 0 0 5px #ac7ad52b, 0 0 23px #aa73d97d; } }
 .primary-button,.secondary-button { border-radius: 5px; padding: 9px 13px; font-size: 11px; line-height: 1.4; min-height: 34px; }
 .primary-button { background: #e1e3e9; color: #090a0c; font-weight: 550; }.primary-button:hover:not(:disabled) { background: white; }.secondary-button { background: #15151c; color: #d0cbdc; border: 1px solid #34313f; }.secondary-button:hover:not(:disabled) { background: #23212c; }.text-button { color: #a99ac3; padding: 6px 0; font-size: 10px; line-height: 1.5; }.text-button:hover:not(:disabled) { color: #ddd0f5; }
 .topic-list { margin: 0; padding: 0; list-style: none; }.topic-list li { font-size: 11px; color: #a9a5b6; padding: 8px 0; border-bottom: 1px solid #1c1c24; }.topic-list li::before { content: '↳'; margin-right: 10px; color: #716388; }

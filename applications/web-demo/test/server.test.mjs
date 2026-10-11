@@ -41,3 +41,15 @@ test('proxy preserves bounded API payloads without forwarding cookies or credent
 test('refuses non-loopback proxy targets', () => {
     assert.throws(() => createDemoServer({ backendUrl: 'https://example.com' }), /loopback/);
 });
+test('connection status checks only local health, not models or speech', async t => {
+    const observed = [];
+    const upstream = await serve(t, createServer((req, res) => {
+        observed.push(req.url); res.setHeader('content-type', 'application/json'); res.end('{"ok":true}');
+    }));
+    const url = await serve(t, createDemoServer({ backendUrl: upstream }));
+    const config = await (await fetch(`${url}/demo-config`)).json();
+    assert.equal(config.connected, true); assert.equal(config.reachable, true);
+    assert.deepEqual(observed, ['/health']);
+    const offline = await serve(t, createDemoServer());
+    assert.deepEqual(await (await fetch(`${offline}/demo-config`)).json(), { connected: false, reachable: false });
+});

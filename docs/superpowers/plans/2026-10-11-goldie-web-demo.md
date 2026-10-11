@@ -73,4 +73,15 @@
 - Actual local Stage 3 routes additionally tested through proxy/controller with controlled model/speech providers and isolated storage. No paid requests, no real voice/model verification claimed.
 - Final review: self-review only; no subagents permitted in this side conversation. Regression fixes cover repeated practice IDs, lost acceptance, cached-review restoration and preservation across resumed actions, cancellation during conversion, wrong-phase audio after failed teaching, and hidden-label document overflow.
 - Handoff: keep the candidate on local `codex/web-demo` in its isolated worktree; preview at http://127.0.0.1:4317. No push, merge or deployment authorized.
-- Open gate: real browser transcription/Gemini/ElevenLabs walkthrough and public hosting. Main-thread report identifies insufficient ElevenLabs credits; default preview intentionally remains disconnected. No new service or fallback added.
+- Open gate: real browser transcription/Gemini/ElevenLabs walkthrough and public hosting. The original handoff's quota/disconnected state is superseded by the follow-up below; no public hosting or fallback added.
+
+## October 11 follow-up: guided, connected preview without paid testing
+
+- Akshar clarified that real ElevenLabs voice must stay in the product. Stop repeating paid voice checks during implementation/QA; use controlled responses for surrounding behavior. No text-only/browser-voice replacement or shorter-content backend contract was introduced.
+- A prior explicitly requested 1050-character real voice test returned valid MP3 after the top-up. It is generation evidence, not a full live-browser sign-off.
+- Added persistent next-step text and purple next-action glow, including reduced-motion treatment. Waiting states have no highlighted click target; practice stays optional.
+- Added a web-owned connected launcher: read the existing ignored server environment, reuse built Stage 3 modules/dependencies, validate local transcription paths and start isolated port/store alongside the website. No source/config/store changes in the desktop or main-thread checkout.
+- `/demo-config` now checks only local `/health`. Backend connected is an availability claim, not an API balance or provider-success claim.
+- Browser QA now intercepts every API route in its offline context too. This prevents a future connected preview from accidentally turning an unavailable-service test into a paid generation. Recording QA waits for observable captured bytes before submitting the fake microphone.
+- Verification: 34 unit/server/launcher tests pass; syntax build and controlled Chrome journey at 1440/900/390 px pass; real Stage 3 route integration passes with controlled providers. Zero paid requests in these follow-up checks. Manager self-review only; no subagents allowed.
+- Running preview: http://127.0.0.1:4317, isolated backend http://127.0.0.1:8797. Both `/health` and website `reachable` checks pass. No live model/voice walkthrough rerun; Akshar will run the actual demonstration. Nothing pushed, merged or deployed.

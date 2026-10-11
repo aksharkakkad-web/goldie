@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mentorView, highlight } from '../src/view.js';
+import { mentorView, highlight, nextStep } from '../src/view.js';
 
 test('source tokens never become executable HTML', () => {
     const html = highlight('<img src=x onerror="alert(1)">');
@@ -16,4 +16,17 @@ test('same question ID in different phases has independent response and reveal s
     assert.match(html, /First response/); assert.match(html, /First answer/);
     assert.doesNotMatch(html, /Second answer/);
     assert.match(html, /data-draft="second:q1"/);
+});
+test('next-step guidance moves from replay to acceptance and optional practice without starting actions', () => {
+    assert.equal(nextStep({ view: 'idle' }, false).target, '#replay-action');
+    assert.equal(nextStep({ view: 'idle' }, true).target, '[data-action="prepare"]');
+    assert.equal(nextStep({ view: 'offer' }, true).target, '[data-action="accept"]');
+    assert.equal(nextStep({ view: 'gate' }, true).target, '[data-action="practice"]');
+    assert.match(nextStep({ view: 'gate' }, true).message, /optional/i);
+    assert.equal(nextStep({ view: 'question', recording: 'recording' }, true).target, '[data-action="send"]');
+    assert.equal(nextStep({ view: 'question', recording: 'processing' }, true).target, null);
+    assert.equal(nextStep({ view: 'lesson', busy: true }, true).target, null);
+    assert.equal(nextStep({ view: 'idle' }, false, true).target, null);
+    assert.equal(nextStep({ view: 'recap', batches: { phase: {} } }, true).target, '[data-action="review"]');
+    assert.equal(nextStep({ view: 'recap', batches: {} }, true).target, '[data-action="reset"]');
 });

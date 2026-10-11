@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
+    "start:connected": "node start-connected.mjs",
     "test": "node --test test/*.test.mjs",
-    "build": "node --check server.mjs && node --check src/app.js && node --check src/controller.js"
+    "build": "node --check server.mjs && node --check start-connected.mjs && node --check src/app.js && node --check src/controller.js"
   },
   "engines": { "node": ">=24", "yarn": ">=1.7.0 <2" }
 }

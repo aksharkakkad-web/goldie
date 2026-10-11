@@ -20,6 +20,32 @@ const paths = {
 export const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${paths[name] ?? paths.spark}</svg>`;
 const button = (label, action, kind = 'primary', disabled = false) => `<button class="${kind}-button" data-action="${action}"${disabled ? ' disabled' : ''}>${e(label)}</button>`;
 
+export function nextStep(state, ready, running = false) {
+    const action = (name, message) => ({ target: `[data-action="${name}"]`, message });
+    if (state.busy) { return { target: null, message: 'Wait for Goldie. No need to click again.' }; }
+    if (running) { return { target: null, message: 'Watch the sample build. A lesson comes next.' }; }
+    if (state.error && state.retryable) { return action('retry', 'Click Retry when you’re ready, or keep browsing.'); }
+    switch (state.view) {
+        case 'offer': return action('accept', 'Click Explain this build to start the spoken lesson.');
+        case 'lesson': return state.explanation
+            ? action('covered', 'Listen or read, then mark this topic covered. Ask Goldie any time.')
+            : { target: '#play', message: 'Click Play to load this phase. Nothing starts on reload.' };
+        case 'gate': return action('practice', 'Practice is optional. Try it, or click Continue.');
+        case 'practice': return action('continue', 'Compare your reasoning with the model answers, then continue.');
+        case 'question':
+            if (['recording', 'ready'].includes(state.recording)) { return action('send', 'Click Send question when you’re done, or Cancel to discard.'); }
+            if (state.answer || state.recording === 'idle') { return action('resume', 'Click Resume lesson to return to the original explanation.'); }
+            return { target: null, message: 'Wait for your question to finish processing.' };
+        case 'recap': return Object.keys(state.batches ?? {}).length || state.cachedPracticePhaseIds?.length
+            ? action('review', 'Click Review practice to revisit your questions—no new generation.')
+            : action('reset', 'You’re done. Click Start again only if you want another walkthrough.');
+        case 'review': return action('recap', 'Review at your own pace, then return to the recap.');
+        case 'no-offer': return action('reset', 'No lesson is needed. Browse the code or reset the walkthrough.');
+        default: return ready ? action('prepare', 'Click Prepare lesson to see what you can learn.')
+            : { target: '#replay-action', message: 'Click Run sample prompt in the terminal to begin.' };
+    }
+}
+
 export function highlight(source) {
     // Tokenize original text first. Never interpolate source into HTML attributes.
     const regex = /(\/\/[^\n]*|'[^'\n]*'|"[^"\n]*"|\b(?:import|from|export|default|function|const|let|async|await|return|if|new|typeof|model|String|React|Request|Response)\b|\b\d+\b)/g;

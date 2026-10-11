@@ -4,7 +4,7 @@ import { HttpApi } from './api.js';
 import { DemoController } from './controller.js';
 import { BrowserMedia } from './media.js';
 import { mountOrb } from './orb.js';
-import { escapeHtml as e, icon, highlight, mentorView } from './view.js';
+import { escapeHtml as e, icon, highlight, mentorView, nextStep } from './view.js';
 
 const $ = selector => document.querySelector(selector);
 const media = new BrowserMedia();
@@ -53,7 +53,7 @@ function setStep(step) {
 function runReplay() {
     if (controller.active || controller.state.busy) { return; }
     if (ui.running) { clearInterval(timer); ui.running = false; setStep(4); return; }
-    ui.running = true; ui.step = 0; ui.currentFile = null; ui.openFiles = []; renderWorkspace();
+    ui.running = true; ui.step = 0; ui.currentFile = null; ui.openFiles = []; renderWorkspace(); renderMentor(controller.state);
     timer = setInterval(() => {
         const next = ui.step + 1;
         if (next >= 4) { clearInterval(timer); ui.running = false; }
@@ -82,6 +82,13 @@ function renderMentor(state) {
     $('#skip').disabled = state.busy || state.view !== 'lesson';
     $('#reset').disabled = state.busy; $('#replay-action').disabled = Boolean(controller.active || state.busy);
     $('#privacy-note').textContent = state.recording === 'recording' ? 'Microphone on · click Send or Cancel' : 'You choose when to learn.';
+    const guidance = nextStep(state, ui.step === 4, ui.running);
+    $('#next-step-text').textContent = guidance.message;
+    for (const element of document.querySelectorAll('.next-action')) {
+        element.classList.remove('next-action'); element.removeAttribute('aria-describedby');
+    }
+    const next = guidance.target ? $(guidance.target) : null;
+    if (next && !next.disabled) { next.classList.add('next-action'); next.setAttribute('aria-describedby', 'next-step'); }
 }
 async function reset() {
     await controller.reset();
@@ -125,8 +132,8 @@ media.subscribe(event => {
 });
 renderWorkspace(); controller.subscribe(renderMentor);
 void fetch('/demo-config').then(response => response.json()).then(config => {
-    $('#connection').textContent = config.connected ? 'Mentor configured' : 'Replay available';
-    $('#connection').classList.toggle('connected', config.connected);
+    $('#connection').textContent = config.reachable ? 'Backend connected' : config.connected ? 'Backend unavailable' : 'Replay available';
+    $('#connection').classList.toggle('connected', Boolean(config.reachable));
 }).catch(() => { $('#connection').textContent = 'Offline'; });
 if (persistence.load()?.sessionId || persistence.load()?.acceptancePending) { ui.step = 4; renderWorkspace(); void controller.restore(); }
 window.addEventListener('pagehide', () => { clearInterval(timer); controller.dispose(); media.dispose(); disposeOrb(); });
