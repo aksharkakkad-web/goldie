@@ -8,7 +8,8 @@
  ********************************************************************************/
 
 import cors from '@fastify/cors';
-import { ApiErrorResponseSchema, HealthResponse, HealthResponseSchema, SpeechRequestSchema, SpeechResponseSchema } from '@goldie/contracts';
+import { ApiErrorResponseSchema, HealthResponse, HealthResponseSchema, SpeechRequestSchema, SpeechResponseSchema,
+    TranscribeRequestSchema, TranscribeResponseSchema } from '@goldie/contracts';
 import Fastify, { FastifyInstance } from 'fastify';
 import * as path from 'node:path';
 import { BackendConfig } from './config';
@@ -18,11 +19,15 @@ import { LessonService } from './lessons';
 import { SpeechProviderError } from './providers/speech';
 import { GeminiTeachingProvider, TeachingProvider } from './providers/teaching';
 import { SpeechService } from './speech';
+import { LocalTranscriber } from './transcription';
+export { LocalTranscriber } from './transcription';
 
 export async function buildApp(config: BackendConfig, teachingProvider: TeachingProvider = new GeminiTeachingProvider({
     apiKey: config.geminiApiKey, model: config.geminiModel, timeoutMs: config.geminiTimeoutMs
 })): Promise<FastifyInstance> {
     const lessons = await LessonService.open(config.dataDir, teachingProvider);
+    const transcription = new LocalTranscriber({ ffmpegBin: config.ffmpegBin, whisperBin: config.whisperBin, modelPath: config.whisperModelPath },
+        (sessionId, phaseId) => lessons.authorizeTranscription(sessionId, phaseId));
     const speech = new SpeechService(path.join(config.dataDir, 'audio'), {
         apiKey: config.elevenLabsApiKey, baseUrl: config.elevenLabsBaseUrl,
         voiceId: config.elevenLabsVoiceId, modelId: config.elevenLabsModelId, timeoutMs: config.speechTimeoutMs
@@ -68,6 +73,11 @@ export async function buildApp(config: BackendConfig, teachingProvider: Teaching
     );
 
     registerLessonRoutes(app, lessons);
+    app.post('/api/transcribe', { bodyLimit: 3 * 1024 * 1024 }, async request => {
+        const parsed = TranscribeRequestSchema.safeParse(request.body);
+        if (!parsed.success) { throw new ApiError(400, 'INVALID_REQUEST', 'Invalid transcription request.'); }
+        return TranscribeResponseSchema.parse(await transcription.transcribe(parsed.data));
+    });
     app.post('/api/speech', async request => {
         const parsed = SpeechRequestSchema.safeParse(request.body);
         if (!parsed.success) {

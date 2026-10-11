@@ -30,8 +30,46 @@ const phase: PlannedPhase = { id: 'queues', title: 'Work queues', objective: 'Un
 const plan: LessonPlan = { shouldOffer: true, reason: 'A new asynchronous boundary merits teaching.', estimatedSeconds: 75, phases: [phase] };
 const options = { apiKey: 'private-test-key', model: 'gemini-3.8-flash', timeoutMs: 1000 };
 const envelope = (value: unknown) => JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(value) }] } }] });
+const conversationPhase = { id: phase.id, title: phase.title, objective: phase.objective, description: phase.description };
 
 describe('Gemini teaching REST adapter', () => {
+    it('generates contextual conversations and distinct practice through the same structured REST boundary', async () => {
+        let calls = 0;
+        await provider((req, res) => {
+            let body = ''; req.on('data', chunk => body += chunk);
+            req.on('end', () => {
+                const payload = JSON.parse(body);
+                const context = JSON.parse(payload.contents[0].parts[0].text);
+                const valid = context.phase.id === 'queues' && context.explanation === 'Saved queue explanation'
+                    && context.handoff === input.handoff && !payload.tools;
+                res.writeHead(valid ? 200 : 400, { 'content-type': 'application/json' });
+                res.end(envelope(calls++ === 0 ? { answer: 'Retries can repeat work; use atomic deduplication, with implementation unverified.' }
+                    : { questions: [1, 2, 3].map(n => ({ id: `q${n}`, question: `Reason about failure ${n}`, modelAnswer: `Apply boundary ${n}` })) }));
+            });
+        }, async baseUrl => {
+            const service = adapter({ ...options, baseUrl });
+            const context = { ...input, phase: conversationPhase, explanation: 'Saved queue explanation' };
+            expect((await service.ask({ ...context, question: 'What if a retry repeats?', history: [] })).answer).to.include('unverified');
+            expect((await service.practice(context)).questions).to.have.length(3);
+            expect(service.identity).to.equal('gemini-3.8-flash:stage2-v7-qualified');
+        });
+        expect(calls).to.equal(2);
+    });
+    it('rejects malformed answers and duplicate practice instead of falling back, and keeps quota/timeouts safe', async () => {
+        for (const result of [{ answer: '' }, { answer: 'x'.repeat(4001) }, { answer: 'safe', unexpected: true }]) {
+            await provider((_req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(envelope(result)); },
+                baseUrl => failure(adapter({ ...options, baseUrl }).ask({ ...input, phase: conversationPhase, explanation: 'Saved', question: 'Why?', history: [] }),
+                    'GEMINI_INVALID_OUTPUT', true));
+        }
+        await provider((_req, res) => { res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(envelope({ questions: [1, 2, 3].map(n => ({ id: `q${n}`, question: 'Same prompt', modelAnswer: 'Reason' })) })); },
+        baseUrl => failure(adapter({ ...options, baseUrl }).practice({ ...input, phase: conversationPhase, explanation: 'Saved' }), 'GEMINI_INVALID_OUTPUT', true));
+        await provider((_req, res) => { res.writeHead(429); res.end('provider-secret-body'); },
+            baseUrl => failure(adapter({ ...options, baseUrl }).ask({ ...input, phase: conversationPhase, explanation: 'Saved', question: 'Why?', history: [] }),
+                'GEMINI_QUOTA', true));
+        await provider(() => undefined,
+            baseUrl => failure(adapter({ ...options, baseUrl, timeoutMs: 20 }).practice({ ...input, phase: conversationPhase, explanation: 'Saved' }), 'GEMINI_TIMEOUT', true));
+    });
     it('requests low thinking for interactive Gemini 3 planning and teaching without breaking older model requests', async () => {
         for (const model of ['gemini-3.8-flash', 'gemini-2.5-flash']) {
             let calls = 0;

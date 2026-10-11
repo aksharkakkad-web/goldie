@@ -33,7 +33,10 @@ describe('Stage 2 real HTTP integration with controlled upstream HTTP', () => {
             expect(body).not.to.include('never-forward-this-profile-field');
             const context = JSON.parse(JSON.parse(body).contents[0].parts[0].text);
             let result;
-            if (context.phaseId) {
+            if (context.question) {
+                expect(context.handoff).to.equal('Plan a web application with authenticated teams and membership storage.');
+                result = { answer: 'Conceptually an API is a contract across a request boundary. The supplied implementation is unverified.' };
+            } else if (context.phaseId) {
                 teaches++;
                 expect(context.handoff).to.equal('Plan a web application with authenticated teams and membership storage.');
                 result = {

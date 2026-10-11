@@ -31,6 +31,17 @@ async function failure(operation: Promise<unknown>): Promise<Error> {
 const options = { apiKey: 'private-test-key', voiceId: 'voice1', modelId: 'eleven_multilingual_v2', timeoutMs: 1000 };
 
 describe('ElevenLabs speech adapter', () => {
+    it('distinguishes credit exhaustion returned as HTTP 401 from rejected credentials without exposing provider text', async () => {
+        await provider((_request, response) => {
+            response.writeHead(401, { 'content-type': 'application/json' });
+            response.end(JSON.stringify({ detail: { status: 'quota_exceeded', message: 'private-test-key account details' } }));
+        }, async baseUrl => {
+            const error = await failure(synthesizeSpeech('Approved text', { ...options, baseUrl }));
+            expect(error).to.have.property('code', 'SPEECH_QUOTA');
+            expect(error.message).to.include('credits');
+            expect(JSON.stringify(error)).not.to.include('private-test-key');
+        });
+    });
     it('posts only approved teaching text and returns MP3 bytes', async () => {
         await provider((request, response) => {
             expect(request.method).to.equal('POST');

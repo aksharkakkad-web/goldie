@@ -5,7 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 import {
-    AskRequest, AskResponse, CompleteRequest, CompleteResponse, IdentifierSchema,
+    AskRequest, AskResponse, AskResponseSchema, CompleteRequest, CompleteResponse, IdentifierSchema, PracticeBatch, PracticeBatchSchema,
     OfferRequest, OfferResponse, Phase, SessionActionRequest, SessionActionRequestSchema,
     SessionRequest, SessionResponse, SessionState, SessionStateSchema, TeachRequest, TeachResponse,
     TeachingProfile, TeachingProfileSchema
@@ -13,8 +13,8 @@ import {
 import { z } from 'zod';
 import { ApiError } from './errors';
 import { contentId, lesson, normalizeQuestion } from './lesson';
-import { generalFaq, unsupportedQuestion } from './general-faq';
-import { LessonPlan, LessonPlanSchema, TeachingProvider, TeachingResultSchema } from './providers/teaching';
+import { CONVERSATION_PROMPT_VERSION, ConversationResultSchema, LessonPlan, LessonPlanSchema,
+    PracticeResultSchema, TeachingProvider, TeachingResultSchema } from './providers/teaching';
 import { JsonStore } from './store';
 
 const LegacyOfferSchema = z.object({
@@ -57,12 +57,24 @@ const OfferSchema = z.discriminatedUnion('source', [
 const TeachingCacheSchema = z.array(z.object({
     phaseId: IdentifierSchema, detail: z.enum(['standard', 'expanded']), result: TeachingResultSchema
 }).strict());
-const StoredSessionSchema = z.discriminatedUnion('source', [
+const V2SessionSchema = z.discriminatedUnion('source', [
     LegacySessionSchema.extend({ source: z.literal('reference') }).strict(),
     LegacySessionSchema.extend({ source: z.literal('gemini'), snapshot: SnapshotSchema, teachings: TeachingCacheSchema }).strict()
 ]);
+const ConversationsSchema = z.array(z.object({
+    requestId: IdentifierSchema, fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    promptVersion: z.string().min(1), response: AskResponseSchema
+}).strict()).max(100);
+const StoredSessionSchema = z.discriminatedUnion('source', [
+    LegacySessionSchema.extend({ source: z.literal('reference'), conversations: ConversationsSchema, practices: z.array(PracticeBatchSchema) }).strict(),
+    LegacySessionSchema.extend({ source: z.literal('gemini'), snapshot: SnapshotSchema, teachings: TeachingCacheSchema,
+        conversations: ConversationsSchema, practices: z.array(PracticeBatchSchema) }).strict()
+]);
+const V2StoreSchema = z.object({
+    version: z.literal(2), offers: z.array(OfferSchema).max(1000), sessions: z.array(V2SessionSchema).max(1000)
+}).strict();
 const StoreSchema = z.object({
-    version: z.literal(2), offers: z.array(OfferSchema).max(1000), sessions: z.array(StoredSessionSchema).max(1000)
+    version: z.literal(3), offers: z.array(OfferSchema).max(1000), sessions: z.array(StoredSessionSchema).max(1000)
 }).strict();
 
 type StoreState = z.infer<typeof StoreSchema>;
@@ -130,11 +142,25 @@ function validateStore(value: unknown): StoreState {
             sessions: legacy.sessions.map(session => ({ ...session, source: 'reference' }))
         });
     }
+    if (value && typeof value === 'object' && 'version' in value && value.version === 2) {
+        const legacy = V2StoreSchema.parse(value);
+        return validateStore({ ...legacy, version: 3,
+            sessions: legacy.sessions.map(session => ({ ...session, conversations: [], practices: [] })) });
+    }
     const parsed = StoreSchema.parse(value);
     validateInvariants(parsed);
     const accepted = new Set<string>();
     const cached = new Set<string>();
     for (const session of parsed.sessions) {
+        const requestIds = session.conversations.map(item => item.requestId);
+        const practicePhases = session.practices.map(item => item.phaseId);
+        if (new Set(requestIds).size !== requestIds.length || new Set(practicePhases).size !== practicePhases.length
+            || practicePhases.some(id => !session.state.completedIds.includes(id))
+            || session.conversations.some(item => item.response.kind !== 'answer'
+                || !session.state.phases.some(phase => phase.id === item.response.resumePhaseId)
+                || session.published[item.response.contentId] !== item.response.answer)) {
+            throw new Error('Invalid persisted Stage 3 content');
+        }
         const revisionKey = JSON.stringify([session.state.projectId, session.state.snapshotRevision]);
         if (accepted.has(revisionKey)) { throw new Error('Multiple accepted sessions for one revision'); }
         accepted.add(revisionKey);
@@ -175,13 +201,15 @@ function validateStore(value: unknown): StoreState {
 export class LessonService {
     private plans = new Map<string, Promise<OfferResponse>>();
     private teachings = new Map<string, Promise<TeachResponse>>();
+    private questions = new Map<string, { requestId: string; fingerprint: string; promise: Promise<AskResponse> }>();
+    private practices = new Map<string, Promise<PracticeBatch>>();
 
     private constructor(private store: JsonStore<StoreState>, private provider?: TeachingProvider) { }
 
     static async open(dataDir: string, provider?: TeachingProvider): Promise<LessonService> {
         let migrated = false;
-        const store = await JsonStore.open<StoreState>(dataDir, { version: 2, offers: [], sessions: [] }, value => {
-            if (value && typeof value === 'object' && 'version' in value && value.version === 1) { migrated = true; }
+        const store = await JsonStore.open<StoreState>(dataDir, { version: 3, offers: [], sessions: [] }, value => {
+            if (value && typeof value === 'object' && 'version' in value && (value.version === 1 || value.version === 2)) { migrated = true; }
             return validateStore(value);
         });
         if (migrated) { await store.mutate(() => undefined); }
@@ -272,7 +300,7 @@ export class LessonService {
                     completedIds: [], skippedIds: [], alreadyKnowIds: [],
                     lastEvaluatedRevision: offer.revision, questionHistory: []
                 },
-                actions: [], published: {}
+                actions: [], published: {}, conversations: [], practices: []
             };
             offer.sessionId = session.state.sessionId;
             state.sessions.push(session);
@@ -331,24 +359,134 @@ export class LessonService {
     }
 
     async ask(request: AskRequest): Promise<AskResponse> {
+        request = { ...request, question: request.question.trim(), requestId: request.requestId ?? randomUUID() };
+        const fingerprint = contentId(JSON.stringify([request.phaseId, request.question]));
+        const current = this.findSession(await this.store.read(), request.sessionId);
+        this.requireOpen(current);
+        const cached = current.conversations.find(item => item.requestId === request.requestId);
+        if (cached) {
+            if (cached.fingerprint !== fingerprint) { throw this.questionConflict(); }
+            return cached.response;
+        }
+        this.requirePhase(current, request.phaseId);
+        if (current.state.questionHistory.length >= 100) { throw this.limitError(); }
+        const pending = this.questions.get(request.sessionId);
+        if (pending) {
+            if (pending.requestId === request.requestId) {
+                if (pending.fingerprint !== fingerprint) { throw this.questionConflict(); }
+                return pending.promise;
+            }
+            throw new ApiError(409, 'QUESTION_BUSY', 'Another question is being answered. Wait or retry manually.', true);
+        }
+        const promise = this.generateAnswer(request, current, fingerprint);
+        this.questions.set(request.sessionId, { requestId: request.requestId!, fingerprint, promise });
+        try { return await promise; } finally { this.questions.delete(request.sessionId); }
+    }
+
+    private async generateAnswer(request: AskRequest, current: StoredSession, fingerprint: string): Promise<AskResponse> {
+        let answer: string;
+        let supportedQuestions: string[] | undefined;
+        if (current.source === 'gemini') {
+            const provider = this.requireProvider();
+            if (provider.identity !== current.snapshot.providerIdentity) {
+                throw new ApiError(409, 'GEMINI_CONTEXT_CHANGED', 'Restore the saved lesson model configuration.');
+            }
+            if (!provider.ask) { throw new ApiError(503, 'GEMINI_NOT_CONFIGURED', 'Conversational teaching is not configured.'); }
+            const explanation = current.teachings.find(t => t.phaseId === request.phaseId && t.detail === 'standard')?.result.explanation;
+            if (!explanation) { throw new ApiError(409, 'EXPLANATION_REQUIRED', 'Load the phase explanation before asking a question.'); }
+            const parsed = ConversationResultSchema.safeParse(await provider.ask({
+                handoff: current.snapshot.handoff, profile: structuredClone(current.snapshot.profile),
+                phase: current.state.phases.find(p => p.id === request.phaseId)!, explanation,
+                question: request.question, history: structuredClone(current.state.questionHistory.slice(-6))
+            }));
+            if (!parsed.success) { throw new ApiError(502, 'GEMINI_INVALID_OUTPUT', 'Gemini returned an unusable answer. Retry manually.', true); }
+            answer = parsed.data.answer;
+        } else {
+            const normalized = normalizeQuestion(request.question);
+            const prepared = lesson.questions.find(question => question.aliases.some(alias => normalizeQuestion(alias) === normalized));
+            const phase = lesson.phases.find(item => item.id === request.phaseId)!;
+            const deeper = lesson.deeperAliases.some(alias => normalizeQuestion(alias) === normalized);
+            answer = prepared?.answer ?? (deeper ? phase.expanded : lesson.unsupportedAnswer);
+            if (!prepared && !deeper) { supportedQuestions = lesson.questions.map(question => question.question); }
+        }
         return this.store.mutate(state => {
             const session = this.findSession(state, request.sessionId);
-            this.requirePhase(session, request.phaseId);
-            if (session.state.questionHistory.length >= 100) { throw this.limitError(); }
-            const normalized = normalizeQuestion(request.question);
-            const questions = session.source === 'reference' ? lesson.questions : generalFaq;
-            const prepared = questions.find(question => question.aliases.some(alias => normalizeQuestion(alias) === normalized));
-            const phase = session.source === 'reference' ? lesson.phases.find(item => item.id === request.phaseId) : undefined;
-            const deeper = Boolean(phase && lesson.deeperAliases.some(alias => normalizeQuestion(alias) === normalized));
-            const answer = prepared?.answer ?? (deeper && phase ? phase.expanded : session.source === 'reference' ? lesson.unsupportedAnswer : unsupportedQuestion);
+            if (isClosed(session.state) || session.state.activePhaseId !== request.phaseId
+                || session.actions.length !== current.actions.length || session.state.questionHistory.length !== current.state.questionHistory.length) {
+                throw new ApiError(409, 'QUESTION_STALE', 'The lesson changed while answering. Discard this answer and retry manually.', true);
+            }
             const id = this.publish(session, answer);
             session.state.status = 'asking';
             session.state.questionHistory.push({ question: request.question, answer, resumePhaseId: request.phaseId });
-            return {
+            const response: AskResponse = {
                 kind: 'answer' as const, answer, resumePhaseId: request.phaseId, contentId: id,
-                ...(!prepared && !deeper ? { supportedQuestions: questions.map(question => question.question) } : {})
+                ...(supportedQuestions ? { supportedQuestions } : {})
             };
+            session.conversations.push({ requestId: request.requestId!, fingerprint, promptVersion: CONVERSATION_PROMPT_VERSION, response });
+            return response;
         });
+    }
+
+    private questionConflict(): ApiError {
+        return new ApiError(409, 'REQUEST_CONFLICT', 'This request ID was used for different content. Start a new request.');
+    }
+
+    async practice(sessionId: string, phaseId: string, generate: boolean): Promise<PracticeBatch | null> {
+        const current = this.findSession(await this.store.read(), sessionId);
+        if (!current.state.phases.some(p => p.id === phaseId)) { throw new ApiError(404, 'PHASE_NOT_FOUND', 'The lesson phase was not found.'); }
+        const cached = current.practices.find(p => p.phaseId === phaseId);
+        // eslint-disable-next-line no-null/no-null -- null is the explicit wire-level cache miss.
+        if (cached || !generate) { return cached ?? null; }
+        if (!current.state.completedIds.includes(phaseId)) {
+            throw new ApiError(409, 'PRACTICE_NOT_AVAILABLE', 'Practice is available only for covered phases, not skipped or familiar phases.');
+        }
+        const key = JSON.stringify([sessionId, phaseId]);
+        const pending = this.practices.get(key);
+        if (pending) { return pending; }
+        const promise = this.generatePractice(current, phaseId);
+        this.practices.set(key, promise);
+        try { return await promise; } finally { this.practices.delete(key); }
+    }
+
+    private async generatePractice(current: StoredSession, phaseId: string): Promise<PracticeBatch> {
+        let questions: PracticeBatch['questions'];
+        if (current.source === 'gemini') {
+            const provider = this.requireProvider();
+            if (provider.identity !== current.snapshot.providerIdentity) {
+                throw new ApiError(409, 'GEMINI_CONTEXT_CHANGED', 'Restore the saved lesson model configuration.');
+            }
+            if (!provider.practice) { throw new ApiError(503, 'GEMINI_NOT_CONFIGURED', 'Practice generation is not configured.'); }
+            const explanation = current.teachings.find(t => t.phaseId === phaseId && t.detail === 'standard')?.result.explanation;
+            if (!explanation) { throw new ApiError(409, 'EXPLANATION_REQUIRED', 'Practice requires a saved phase explanation.'); }
+            const parsed = PracticeResultSchema.safeParse(await provider.practice({ handoff: current.snapshot.handoff,
+                profile: structuredClone(current.snapshot.profile), phase: current.state.phases.find(p => p.id === phaseId)!, explanation }));
+            if (!parsed.success) { throw new ApiError(502, 'GEMINI_INVALID_OUTPUT', 'Gemini returned unusable practice. Retry manually.', true); }
+            questions = parsed.data.questions;
+        } else {
+            const phase = lesson.phases.find(p => p.id === phaseId)!;
+            questions = [
+                { id: 'purpose', question: `What responsibility does ${phase.title} have in a create-team request?`, modelAnswer: phase.explanation },
+                { id: 'boundary', question: `Why is the boundary around ${phase.title} useful?`, modelAnswer: phase.expanded },
+                { id: 'failure', question: 'What should happen if a create-team request fails?',
+                    modelAnswer: 'Return a clear error, preserve consistent stored data, and avoid showing success before the server confirms it. '
+                        + 'Retries need appropriate idempotency; validation alone does not guarantee correctness.' }
+            ];
+        }
+        const batch = PracticeBatchSchema.parse({ practiceId: randomUUID(), phaseId, questions });
+        return this.store.mutate(state => {
+            const session = this.findSession(state, current.state.sessionId);
+            if (!session.state.completedIds.includes(phaseId)) { throw new ApiError(409, 'PRACTICE_NOT_AVAILABLE', 'This phase is not covered.'); }
+            const existing = session.practices.find(p => p.phaseId === phaseId);
+            if (existing) { return existing; }
+            session.practices.push(batch);
+            return batch;
+        });
+    }
+
+    async authorizeTranscription(sessionId: string, phaseId: string): Promise<string> {
+        const session = this.findSession(await this.store.read(), sessionId);
+        this.requirePhase(session, phaseId);
+        return contentId(JSON.stringify([session.state.sessionId, phaseId, session.actions, session.state.questionHistory.length]));
     }
 
     async action(sessionId: string, request: SessionActionRequest): Promise<SessionState> {

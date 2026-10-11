@@ -8,7 +8,7 @@ import {
     AskRequestSchema, AskResponseSchema, CompleteRequestSchema, CompleteResponseSchema,
     IdentifierSchema, OfferRequestSchema, OfferResponseSchema, SessionActionRequestSchema,
     SessionActionResponseSchema, SessionRequestSchema, SessionResponseSchema,
-    SessionStateSchema, TeachRequestSchema, TeachResponseSchema
+    SessionStateSchema, TeachRequestSchema, TeachResponseSchema, PracticeBatchSchema, PracticeResponseSchema
 } from '@goldie/contracts';
 import { z } from 'zod';
 import { ApiError } from './errors';
@@ -30,4 +30,11 @@ export function registerLessonRoutes(app: FastifyInstance, lessons: LessonServic
     app.post<{ Params: { sessionId: string } }>('/api/sessions/:sessionId/actions', async request =>
         SessionActionResponseSchema.parse(await lessons.action(parse(IdentifierSchema, request.params.sessionId), parse(SessionActionRequestSchema, request.body))));
     app.post('/api/complete', async request => CompleteResponseSchema.parse(await lessons.complete(parse(CompleteRequestSchema, request.body))));
+    const practicePath = '/api/sessions/:sessionId/phases/:phaseId/practice';
+    app.get<{ Params: { sessionId: string; phaseId: string } }>(practicePath, async request =>
+        PracticeResponseSchema.parse(await lessons.practice(parse(IdentifierSchema, request.params.sessionId), parse(IdentifierSchema, request.params.phaseId), false)));
+    app.post<{ Params: { sessionId: string; phaseId: string } }>(practicePath, async request => {
+        parse(z.object({}).strict(), request.body ?? {});
+        return PracticeBatchSchema.parse(await lessons.practice(parse(IdentifierSchema, request.params.sessionId), parse(IdentifierSchema, request.params.phaseId), true));
+    });
 }

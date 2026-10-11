@@ -247,3 +247,6 @@ Structured validation is not a complete hallucination detector. Review actual
 generated teaching for correctness before recording a judged demo. No Stage 3
 freeform Q&A, microphone, live Codex handoff watcher, source retrieval, hosted
 database or deployment is included.
+# Stage 3 compatibility note
+
+For the Stage 3 backend candidate, `stage3-integration.md` supersedes Stage 2's prepared live-session FAQ, Q&A deadline and storage version. Stage 2 planning/teaching identities and endpoint responses remain stable. Reference lessons remain prepared regression fixtures.

@@ -23,6 +23,9 @@ export interface BackendConfig {
     geminiApiKey?: string;
     geminiModel: string;
     geminiTimeoutMs: number;
+    whisperBin?: string;
+    whisperModelPath?: string;
+    ffmpegBin?: string;
 }
 
 function optionalTrimmed(value: string | undefined): string | undefined {
@@ -73,6 +76,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
         geminiApiKey: optionalTrimmed(env.GEMINI_API_KEY),
         geminiModel: providerIdentifier(env.GEMINI_MODEL, 'gemini-3.5-flash-lite', 'GEMINI_MODEL', true),
         geminiTimeoutMs: integerValue(env.GOLDIE_GEMINI_TIMEOUT_MS, 20000, 'GOLDIE_GEMINI_TIMEOUT_MS', 1, 20000),
+        whisperBin: optionalTrimmed(env.GOLDIE_WHISPER_BIN),
+        whisperModelPath: optionalTrimmed(env.GOLDIE_WHISPER_MODEL_PATH),
+        ffmpegBin: optionalTrimmed(env.GOLDIE_FFMPEG_BIN),
         dataDir: path.resolve(stringValue(env.GOLDIE_DATA_DIR, path.resolve(__dirname, '../../.data'))),
         elevenLabsVoiceId: providerIdentifier(env.ELEVENLABS_VOICE_ID, 'JBFqnCBsd6RMkjVDRZzb', 'ELEVENLABS_VOICE_ID'),
         elevenLabsModelId: providerIdentifier(env.ELEVENLABS_MODEL_ID, 'eleven_multilingual_v2', 'ELEVENLABS_MODEL_ID'),

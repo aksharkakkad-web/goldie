@@ -9,7 +9,8 @@
 
 import type {
     OfferRequest, OfferResponse, SessionRequest, SessionResponse, TeachRequest, TeachResponse,
-    AskRequest, AskResponse, CompleteRequest, CompleteResponse, SpeechRequest, SessionActionRequest
+    AskRequest, AskResponse, CompleteRequest, CompleteResponse, SpeechRequest, SessionActionRequest,
+    PracticeBatch, TranscribeRequest, TranscribeResponse
 } from '@goldie/contracts';
 
 export const GoldieService = Symbol('GoldieService');
@@ -44,6 +45,9 @@ export interface GoldieService {
     action(sessionId: string, request: SessionActionRequest): Promise<SessionResponse>;
     teach(request: TeachRequest): Promise<TeachResponse>;
     ask(request: AskRequest): Promise<AskResponse>;
+    transcribe(request: TranscribeRequest): Promise<TranscribeResponse>;
+    getPractice(sessionId: string, phaseId: string): Promise<PracticeBatch | null>;
+    generatePractice(sessionId: string, phaseId: string): Promise<PracticeBatch>;
     complete(request: CompleteRequest): Promise<CompleteResponse>;
     speech(request: SpeechRequest): Promise<GoldieSpeech>;
 }
