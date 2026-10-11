@@ -151,7 +151,11 @@ For a repeatable walkthrough, use the included [Team Tasks example](examples/gol
 - **Rishit:** IDE integration, voice interface, and project-context flow.
 - **Akshar:** teaching backend and provider integrations.
 
-**AI development disclosure:** We used OpenAI Codex as an AI coding assistant to help develop Goldie, including implementation, debugging, tests, and documentation. This is separate from Codex's role as the coding agent inside the product.
+### AI Usage Disclosure
+
+We used AI-assisted coding tools, including Codex, to help develop and debug Goldie. We also used the Gemini API for personalized engineering explanations and ElevenLabs for voice interaction.
+
+Our team designed the product experience, engineering context handoff, learning workflow, and system integrations, with AI assistance during implementation.
 
 Goldie builds on [Eclipse Theia](https://github.com/eclipse-theia/theia) and [Theia IDE](https://github.com/eclipse-theia/theia-ide), with Codex, Gemini, ElevenLabs, and whisper.cpp. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
 
