@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#090a0c">
+  <meta name="description" content="Step inside Goldie. Follow a sample build and understand the engineering behind it.">
+  <title>Goldie — learn as you build</title>
+  <link rel="icon" href="/assets/goldie.png">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/src/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#mentor-content">Skip to Goldie</a>
+  <div class="ide">
+    <header class="titlebar">
+      <div class="window-controls" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="window-title"><img src="/assets/goldie.png" alt=""><span>teamspace</span><span class="title-separator">/</span><span>Goldie</span></div>
+      <div class="top-actions"><span class="local-pill">Interactive walkthrough</span><button id="reset" class="icon-button" aria-label="Reset demo" title="Reset demo"></button></div>
+    </header>
+    <nav class="activity-rail" aria-label="Workspace panels">
+      <button id="explorer-toggle" class="rail-button selected" aria-label="Toggle explorer" title="Explorer"></button>
+      <span class="rail-decoration" id="search-icon" aria-hidden="true"></span>
+      <span class="rail-decoration" id="branch-icon" aria-hidden="true"></span>
+      <span class="rail-decoration" id="blocks-icon" aria-hidden="true"></span>
+      <button id="mentor-focus" class="rail-button mentor-rail" aria-label="Focus Goldie panel" title="Goldie"></button>
+      <div class="rail-bottom"><span class="rail-decoration" id="account-icon" aria-hidden="true"></span></div>
+    </nav>
+    <aside class="explorer" aria-label="File explorer">
+      <div class="pane-heading"><span>Explorer</span><span aria-hidden="true">···</span></div>
+      <div class="project-name"><span aria-hidden="true">⌄</span> TEAMSPACE <span class="sample-label">sample</span></div>
+      <div id="file-tree"></div>
+      <div class="explorer-foot"><span class="tiny-dot"></span> Read-only sample workspace</div>
+    </aside>
+    <main class="workspace" aria-label="Sample code workspace">
+      <div id="editor-tabs" class="editor-tabs" role="tablist" aria-label="Open files"></div>
+      <div id="breadcrumb" class="breadcrumb"></div>
+      <section class="editor" id="editor" aria-label="Code editor" tabindex="0"></section>
+      <section class="terminal" aria-label="Prepared terminal replay">
+        <div class="terminal-tabs"><span class="terminal-tab active">Terminal</span><span class="terminal-tab">Output</span><span class="terminal-disclosure">Prepared replay · not a live shell</span><button id="terminal-toggle" class="icon-button" aria-label="Collapse terminal" title="Collapse terminal"></button></div>
+        <div id="terminal-output" class="terminal-output" aria-live="polite"></div>
+        <div class="replay-bar"><span id="replay-label">Ready to run the sample prompt</span><button id="replay-action" class="small-button">Run sample prompt</button></div>
+      </section>
+    </main>
+    <aside class="mentor-panel" id="mentor" aria-label="Goldie learning panel" data-view="idle">
+      <div class="pane-heading"><span>Goldie</span><span class="connection" id="connection">Local preview</span></div>
+      <header class="mentor-header"><span class="mini-orb" aria-hidden="true"></span><strong>Goldie</strong><button id="settings" class="icon-button" aria-label="Open Goldie settings" aria-expanded="false" title="Settings"></button></header>
+      <div id="settings-panel" class="settings-panel" hidden>
+        <label for="knowledge-level">Your starting point</label>
+        <select id="knowledge-level"><option value="beginner">Beginner — start with the why</option><option value="intermediate">Intermediate — go a little deeper</option></select>
+        <p>The coding sequence is prepared. Teaching uses your connected Goldie backend. No microphone starts until you ask a question.</p>
+      </div>
+      <div class="orb-stage"><div class="orb-wrap"><canvas id="orb" aria-hidden="true"></canvas><div class="orb-fallback" aria-hidden="true"></div></div><p id="orb-status" class="orb-status" role="status" aria-live="polite">Ready when you are</p><div id="phase-dots" class="phase-dots"></div></div>
+      <div id="mentor-content" class="mentor-content" tabindex="-1"></div>
+      <div class="player-controls" aria-label="Goldie audio controls">
+        <button id="ask" class="round-control" aria-label="Ask Goldie" title="Ask Goldie" disabled></button>
+        <button id="play" class="round-control main-control" aria-label="Start learning" title="Start learning" disabled></button>
+        <button id="skip" class="round-control" aria-label="Skip explanation" title="Skip explanation" disabled></button>
+      </div>
+      <div class="mentor-foot"><span id="privacy-note">You choose when to learn.</span></div>
+    </aside>
+    <footer class="statusbar"><div><span id="status-branch"></span><span>main</span><span class="status-separator">⌁</span><span id="workspace-status">Sample workspace</span></div><div><span id="status-file">TypeScript React</span><span>UTF-8</span><span>Goldie</span></div></footer>
+  </div>
+</body>
+</html>

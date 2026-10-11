@@ -1,6 +1,7 @@
 # Goldie interactive web demo design
 
-Status: design accepted in conversation; written specification awaiting review.
+Status: written specification approved by Akshar's implementation request. Website
+implemented locally; full live-browser verification and public hosting remain open.
 
 ## Intent and approved scope
 

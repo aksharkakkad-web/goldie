@@ -1,0 +1,162 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { DemoController } from '../src/controller.js';
+
+const phase = id => ({ id, title: `Topic ${id}`, objective: 'Understand the boundary', description: 'A coherent explanation.' });
+function setup(count = 3) {
+    const calls = [];
+    const session = { sessionId: 's1', projectId: 'p1', snapshotRevision: 1, phases: Array.from({ length: count }, (_, i) => phase(`p${i + 1}`)), activePhaseId: 'p1', status: 'learning', completedIds: [], skippedIds: [], alreadyKnowIds: [], questionHistory: [], lastEvaluatedRevision: 1 };
+    const batch = { practiceId: 'batch1', phaseId: 'p1', questions: [1, 2, 3].map(n => ({ id: `q${n}`, question: `Reason about boundary ${n}?`, modelAnswer: 'Keep credentials on the server.' })) };
+    const api = { request: async (path, body) => {
+        calls.push({ path, body });
+        if (path === '/api/offer') return { shouldOffer: true, offerId: 'o1', previewTopics: ['Boundaries'] };
+        if (path === '/api/sessions') return structuredClone(session);
+        if (path === '/api/teach') return { explanation: 'The server validates requests.', groundingStatus: 'conceptual', contentId: 'c1' };
+        if (path === '/api/speech') return { mimeType: 'audio/mpeg', audioId: 'a'.repeat(64), audioUrl: `/api/audio/${'a'.repeat(64)}` };
+        if (path.endsWith('/actions')) {
+            if (body.action === 'pause') session.status = 'paused';
+            else if (body.action === 'resume') session.status = 'learning';
+            else {
+                session[body.action === 'phase_completed' ? 'completedIds' : body.action === 'skip' ? 'skippedIds' : 'alreadyKnowIds'].push(body.phaseId);
+                session.activePhaseId = session.phases[session.phases.findIndex(p => p.id === body.phaseId) + 1]?.id;
+            }
+            return structuredClone(session);
+        }
+        if (path === '/api/complete') { session.status = body.status; return { recap: 'You covered the server boundary.', lastEvaluatedRevision: 1 }; }
+        if (path.endsWith('/practice')) return body ? batch : null;
+        if (path === '/api/transcribe') return { text: 'Why validate again?' };
+        if (path === '/api/ask') return { kind: 'answer', answer: 'The browser is not a trusted boundary.', contentId: 'answer1', resumePhaseId: 'p1' };
+        throw new Error(`Unexpected ${path}`);
+    } };
+    const media = { playing: false, selected: 'lesson', position: 12, level: 0,
+        subscribe(fn) { this.listener = fn; return () => {}; },
+        async load(track, speech) { this[track] = speech; this.selected = track; },
+        async play() { this.playing = true; }, pause() { this.playing = false; },
+        select(track) { this.selected = track; }, clear() { this.playing = false; },
+        async startRecording() { this.capturing = true; }, stopRecording() { this.capturing = false; },
+        cancelRecording() { this.capturing = false; }, async recordingData() { return 'YWJjZGVm'; }
+    };
+    return { controller: new DemoController(api, media), api, media, calls, session };
+}
+async function start(f) { await f.controller.prepare(); await f.controller.accept(); }
+
+test('construct/decline do not call providers or start audio', async () => {
+    const f = setup(); assert.equal(f.calls.length, 0); f.controller.decline();
+    assert.equal(f.calls.length, 0); assert.equal(f.media.playing, false);
+});
+test('accept uses supplied handoff and handles more than three phases', async () => {
+    const f = setup(8); await start(f);
+    assert.equal(f.controller.state.session.phases.length, 8);
+    assert.equal(f.calls.find(c => c.path === '/api/sessions').body.referenceLessonId, undefined);
+    assert.match(f.calls[0].body.handoff, /synthetic coding replay/);
+    assert.equal(f.controller.state.view, 'lesson'); assert.equal(f.media.playing, true);
+});
+test('coverage waits at Practice / Continue without generating or starting next clip', async () => {
+    const f = setup(); await start(f); const before = f.calls.length;
+    await f.controller.mark('phase_completed');
+    assert.equal(f.controller.state.view, 'gate'); assert.equal(f.media.playing, false);
+    assert.equal(f.calls.slice(before).filter(c => c.path.endsWith('/practice') || c.path === '/api/teach').length, 0);
+    await f.controller.continuePhase(); assert.equal(f.controller.phase.id, 'p2');
+});
+test('skip and self-reported familiarity bypass practice and remain distinct', async () => {
+    const f = setup(); await start(f);
+    await f.controller.mark('skip'); await f.controller.mark('already_know');
+    assert.deepEqual(f.controller.state.session.skippedIds, ['p1']);
+    assert.deepEqual(f.controller.state.session.alreadyKnowIds, ['p2']);
+    assert.equal(f.controller.phase.id, 'p3');
+    assert.equal(f.calls.filter(c => c.path.endsWith('/practice')).length, 0);
+});
+test('practice is cached and reveal/final review never call the backend', async () => {
+    const f = setup(1); await start(f); await f.controller.mark('phase_completed');
+    assert.equal(f.controller.state.session.status, 'completed');
+    await f.controller.practice(); const before = f.calls.length;
+    f.controller.reveal('q1'); f.controller.setDraft('q1', 'My own answer');
+    await f.controller.practice(); f.controller.review();
+    assert.equal(f.calls.length, before); assert.equal(f.controller.state.drafts.q1, 'My own answer');
+    assert.ok(f.controller.state.revealed.has('q1'));
+    assert.equal(f.controller.state.session.status, 'completed');
+});
+test('uncovered practice is rejected without a generation call', async () => {
+    const f = setup(); await start(f); const before = f.calls.length;
+    await f.controller.practice('p2'); assert.equal(f.calls.length, before);
+});
+test('unseen recorded question uses transcription and explicit exact-clip resume', async () => {
+    const f = setup(); await start(f); f.media.position = 12;
+    await f.controller.questionStart(); assert.equal(f.media.capturing, true); assert.equal(f.media.playing, false);
+    await f.controller.questionSend(); assert.equal(f.controller.state.answer, 'The browser is not a trusted boundary.');
+    assert.equal(f.media.selected, 'answer');
+    await f.controller.questionResume(); assert.equal(f.media.selected, 'lesson'); assert.equal(f.media.position, 12);
+    assert.equal(f.calls.filter(c => c.path === '/api/ask').length, 1);
+});
+test('late microphone permission after Cancel cannot reopen recording', async () => {
+    const f = setup(); await start(f);
+    let resolve; f.media.startRecording = () => new Promise(r => { resolve = r; });
+    const pending = f.controller.questionStart();
+    await new Promise(r => setImmediate(r)); f.controller.questionCancel(); resolve(); await pending;
+    assert.equal(f.controller.state.view, 'lesson'); assert.equal(f.controller.state.recording, 'idle');
+});
+test('speech failure still allows text coverage and recap', async () => {
+    const f = setup(1); const original = f.api.request;
+    f.api.request = (path, body) => path === '/api/speech' ? Promise.reject(Object.assign(new Error('Speech unavailable.'), { retryable: true })) : original(path, body);
+    await start(f); assert.match(f.controller.state.explanation, /server validates/);
+    await f.controller.mark('phase_completed'); await f.controller.continuePhase();
+    assert.equal(f.controller.state.view, 'recap');
+});
+test('duplicate sends share one operation and canceled answers cannot autoplay', async () => {
+    const f = setup(); await start(f); await f.controller.questionStart();
+    const original = f.api.request; let resolve;
+    f.api.request = (path, body) => path === '/api/ask' ? new Promise(r => { resolve = r; }) : original(path, body);
+    const first = f.controller.questionSend(); await f.controller.questionSend();
+    await new Promise(r => setImmediate(r)); f.controller.questionCancel();
+    resolve({ kind: 'answer', answer: 'Late answer', contentId: 'late', resumePhaseId: 'p1' }); await first;
+    assert.equal(f.controller.state.answer, ''); assert.equal(f.media.playing, false);
+});
+test('skipping a paused phase resumes server state before next spoken phase', async () => {
+    const f = setup(); await start(f); await f.controller.playPause();
+    assert.equal(f.controller.state.session.status, 'paused');
+    await f.controller.mark('skip');
+    assert.equal(f.controller.state.session.status, 'learning');
+    assert.equal(f.controller.phase.id, 'p2'); assert.equal(f.media.playing, true);
+});
+test('restoration recovers a lost acceptance without generating or autoplaying', async () => {
+    const f = setup(); const saved = { context: f.controller.context, offer: { offerId: 'o1' }, acceptancePending: true };
+    f.controller.persistence = { load: () => saved, save() {} };
+    await f.controller.restore();
+    assert.equal(f.controller.state.session?.sessionId, 's1');
+    assert.equal(f.media.playing, false);
+    assert.equal(f.calls.filter(c => ['/api/teach', '/api/offer', '/api/speech'].includes(c.path)).length, 0);
+});
+test('restored final review loads only cached batches and never generates', async () => {
+    const f = setup(1); await start(f); await f.controller.mark('phase_completed');
+    await f.controller.continuePhase(); f.controller.state.cachedPracticePhaseIds = ['p1']; const original = f.api.request;
+    f.api.request = (path, body) => path.endsWith('/practice') && body === undefined
+        ? Promise.resolve({ practiceId: 'cached', phaseId: 'p1', questions: [1, 2, 3].map(n => ({ id: `q${n}`, question: 'Why?', modelAnswer: 'Because.' })) }) : original(path, body);
+    const before = f.calls.length; await f.controller.review();
+    assert.equal(f.controller.state.view, 'review'); assert.equal(f.controller.state.batches.p1.practiceId, 'cached');
+    assert.equal(f.calls.length, before);
+});
+test('saving resumed progress preserves the restored practice index before review loads', async () => {
+    const f = setup(); await start(f); await f.controller.mark('phase_completed');
+    let saved = { context: f.controller.context, sessionId: 's1', practicePhaseIds: ['p1'] };
+    f.controller.persistence = { load: () => saved, save: value => { saved = value; } };
+    const original = f.api.request;
+    f.api.request = (path, body) => path === '/api/sessions/s1' ? Promise.resolve(structuredClone(f.session)) : original(path, body);
+    await f.controller.restore();
+    await f.controller.playPause();
+    assert.deepEqual(saved.practicePhaseIds, ['p1']);
+});
+test('cancel during asynchronous recording conversion prevents even transcription', async () => {
+    const f = setup(); await start(f); await f.controller.questionStart(); let resolve;
+    f.media.recordingData = () => new Promise(r => { resolve = r; });
+    const pending = f.controller.questionSend(); f.controller.questionCancel(); resolve('YWJjZGVm'); await pending;
+    assert.equal(f.calls.filter(c => c.path === '/api/transcribe').length, 0);
+    assert.equal(f.controller.state.view, 'lesson');
+});
+test('failed next-phase teaching cannot replay the previous phase content', async () => {
+    const f = setup(); await start(f); const original = f.api.request; let fail = true;
+    f.api.request = (path, body) => path === '/api/teach' && body.phaseId === 'p2' && fail
+        ? Promise.reject(Object.assign(new Error('Teaching unavailable'), { retryable: true })) : original(path, body);
+    await f.controller.mark('skip'); assert.match(f.controller.state.error, /Teaching unavailable/);
+    fail = false; const before = f.calls.length; await f.controller.playPause();
+    assert.ok(f.calls.slice(before).some(c => c.path === '/api/teach' && c.body.phaseId === 'p2'));
+});
