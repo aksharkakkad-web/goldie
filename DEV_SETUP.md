@@ -100,6 +100,31 @@ Run `yarn test:stage1` and `yarn lint` before handoff. These do not spend credit
 Native playback and failure evidence, diagnostic fixture limits, and the separate
 packaged-Electron test prerequisite are in [the Stage 1 guide](docs/goldie-stage1.md).
 
+## Rishit's Stage 2 IDE track
+
+Open the Goldie panel and choose **Load handoff** or run **Goldie: Load sample handoff**
+from the command palette. Select one Markdown file from `docs/stage2-samples/`, then
+choose Beginner or Intermediate. Loading and changing level save context locally;
+they do not contact the teaching backend or start audio. **Prepare lesson** sends
+the selected context. **Explain this build** accepts the offer and permits playback.
+
+End the current session or decline its offer before loading different context.
+Edit a sample in the editor, save, then explicitly load it again to send changed
+context. There is no handoff watcher yet. The same lesson controls support variable
+phase counts and preserve the accepted context on retry/restart.
+
+Goldie uses Theia's in-app file picker because the native Mac picker blocked valid
+Markdown selections during verification. In the picker, the pencil icon switches
+to path input. Enter a sample file path, select the file and choose Open.
+
+Akshar owns the Gemini backend separately. Until his Stage 2 backend is integrated,
+the supplied handoff does not produce live Gemini lessons in this checkout. Current
+client expectations are in `docs/stage2-api.md`; test provenance and screenshots
+are in `docs/goldie-stage2.md`. Never treat controlled client QA responses as live AI.
+
+This run's normal desktop log is `/tmp/goldie-stage2-ready.log`; the existing watcher
+log is `/tmp/goldie-panel-watch.log`. The temporary QA service is stopped.
+
 ## Persistent terminals
 
 A tmux session named `goldie` keeps development processes independent of this chat.

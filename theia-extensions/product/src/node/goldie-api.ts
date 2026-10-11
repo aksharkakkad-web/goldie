@@ -10,12 +10,20 @@ import {
 import { ApplicationError } from '@theia/core/lib/common/application-error';
 import { GOLDIE_NONRETRYABLE_ERROR_CODE, GOLDIE_RETRYABLE_ERROR_CODE, GoldieService, GoldieSpeech } from '../common/goldie-service';
 import { checkGoldieHealth } from './goldie-health';
+import { loadGoldieHandoff } from './goldie-context';
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
 const INVALID_RESPONSE = 'The teaching service returned an invalid response. Try again.';
 // Never forward provider/body messages, even when the API error shape is valid.
 const SAFE_ERRORS: Readonly<Record<string, string>> = {
+    GEMINI_NOT_CONFIGURED: 'Teaching is not configured. Configure Gemini in the backend, then try again.',
+    GEMINI_AUTH_FAILED: 'Teaching credentials were rejected. Correct Gemini credentials in the backend, then try again.',
+    GEMINI_RATE_LIMITED: 'Teaching has reached its request limit. Wait a moment, then retry.',
+    GEMINI_TIMEOUT: 'Teaching generation timed out. Retry when the service is ready.',
+    GEMINI_UNAVAILABLE: 'Teaching is temporarily unavailable. Retry when the service is ready.',
+    GEMINI_INVALID_RESPONSE: 'Teaching returned an invalid lesson. Try again.',
+    CONTEXT_CONFLICT: 'The handoff changed after this offer. Decline it and prepare a new lesson.',
     SPEECH_NOT_CONFIGURED: 'Speech is not configured. Configure credentials in the backend; text is still available.',
     SPEECH_AUTH_FAILED: 'Speech credentials were rejected. Correct credentials in the backend; text is still available.',
     SPEECH_UNAVAILABLE: 'Speech is unavailable. Text is still available.',
@@ -43,6 +51,7 @@ interface Schema<T> {
 export interface GoldieApiOptions {
     timeoutMs?: number;
     speechTimeoutMs?: number;
+    generationTimeoutMs?: number;
 }
 
 function deadline(value: number | undefined, fallback: number): number {
@@ -67,6 +76,7 @@ function localEndpoint(address: string, path: string): URL {
 export function createGoldieApi(address: string, options: GoldieApiOptions = {}): GoldieService {
     const timeout = deadline(options.timeoutMs, 15000);
     const speechTimeout = deadline(options.speechTimeoutMs, 30000);
+    const generationTimeout = deadline(options.generationTimeoutMs ?? options.timeoutMs, 25000);
 
     async function request<T>(path: string, input: unknown, schema: Schema<T> | undefined, audio: boolean, timeoutMs = timeout): Promise<{ body: Buffer; mimeType: string }> {
         const endpoint = localEndpoint(address, path);
@@ -174,13 +184,40 @@ export function createGoldieApi(address: string, options: GoldieApiOptions = {})
         return `/api/sessions/${encodeURIComponent(parsed.data)}`;
     }
 
+    function validSession<T extends { phases: { id: string }[]; activePhaseId?: string; status: string;
+        completedIds: string[]; skippedIds: string[]; alreadyKnowIds: string[];
+        questionHistory: { resumePhaseId: string }[] }>(session: T): T {
+        const ids = session.phases.map(phase => phase.id);
+        const terminal = [...session.completedIds, ...session.skippedIds, ...session.alreadyKnowIds];
+        const firstPending = ids.find(id => !terminal.includes(id));
+        const closed = session.status === 'completed' || session.status === 'dismissed';
+        if (!ids.length || ids.length > 6 || new Set(ids).size !== ids.length
+            || new Set(terminal).size !== terminal.length || terminal.some(id => !ids.includes(id))
+            || (session.activePhaseId !== undefined && !ids.includes(session.activePhaseId))
+            || (!closed && session.activePhaseId !== firstPending)
+            || (session.status === 'completed' && firstPending !== undefined)
+            || session.questionHistory.some(item => !ids.includes(item.resumePhaseId))) {
+            throw new Error(INVALID_RESPONSE);
+        }
+        return session;
+    }
+
     return {
+        loadHandoff: loadGoldieHandoff,
         checkHealth: () => checkGoldieHealth(address),
-        offer: input => json('/api/offer', input, OfferRequestSchema, OfferResponseSchema),
-        startSession: input => json('/api/sessions', input, SessionRequestSchema, SessionResponseSchema),
-        getSession: async sessionId => json(sessionPath(sessionId), undefined, undefined, SessionResponseSchema),
-        action: async (sessionId, input) => json(`${sessionPath(sessionId)}/actions`, input, SessionActionRequestSchema, SessionResponseSchema),
-        teach: input => json('/api/teach', input, TeachRequestSchema, TeachResponseSchema),
+        offer: async input => {
+            const offer = await json('/api/offer', input, OfferRequestSchema, OfferResponseSchema, generationTimeout);
+            if (offer.shouldOffer ? !offer.offerId || !offer.previewTopics.length || offer.previewTopics.length > 6
+                : offer.offerId !== undefined || offer.previewTopics.length > 0) { throw new Error(INVALID_RESPONSE); }
+            return offer;
+        },
+        startSession: async input => {
+            const session = await json('/api/sessions', input, SessionRequestSchema, SessionResponseSchema, generationTimeout);
+            return validSession(session);
+        },
+        getSession: async sessionId => validSession(await json(sessionPath(sessionId), undefined, undefined, SessionResponseSchema)),
+        action: async (sessionId, input) => validSession(await json(`${sessionPath(sessionId)}/actions`, input, SessionActionRequestSchema, SessionResponseSchema)),
+        teach: input => json('/api/teach', input, TeachRequestSchema, TeachResponseSchema, generationTimeout),
         ask: input => json('/api/ask', input, AskRequestSchema, AskResponseSchema),
         complete: input => json('/api/complete', input, CompleteRequestSchema, CompleteResponseSchema),
         speech: async input => {

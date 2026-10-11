@@ -13,7 +13,8 @@ import { AIRegistryConfiguration } from '@theia/ai-registry/lib/common/ai-regist
 import { WidgetFactory, bindViewContribution, FrontendApplicationContribution } from '@theia/core/lib/browser';
 import { ServiceConnectionProvider } from '@theia/core/lib/browser/messaging/service-connection-provider';
 import { GoldieService, GOLDIE_SERVICE_PATH } from '../common/goldie-service';
-import { GoldieWidget } from './goldie/goldie-widget';
+import { GoldieWidget, GOLDIE_HANDOFF_DIALOG } from './goldie/goldie-widget';
+import { DefaultFileDialogService } from '@theia/filesystem/lib/browser/file-dialog/file-dialog-service';
 import { GoldieViewContribution } from './goldie/goldie-view-contribution';
 import { AboutDialog } from '@theia/core/lib/browser/about-dialog';
 import { applyBranding } from './theia-ide-config';
@@ -33,6 +34,8 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
         ServiceConnectionProvider.createLocalProxy<GoldieService>(context.container, GOLDIE_SERVICE_PATH)
     ).inSingletonScope();
     bind(GoldieWidget).toSelf();
+    // Use Theia's regular picker for Goldie; the native Mac picker can disable valid Markdown selections.
+    bind(GOLDIE_HANDOFF_DIALOG).to(DefaultFileDialogService).inSingletonScope();
     bind(WidgetFactory).toDynamicValue(context => ({
         id: GoldieWidget.ID,
         createWidget: () => context.container.get(GoldieWidget)

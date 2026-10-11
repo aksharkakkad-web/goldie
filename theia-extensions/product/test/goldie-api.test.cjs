@@ -30,6 +30,75 @@ test('safe backend error semantics survive the actual Theia RPC error codec with
     }
 });
 
+test('Gemini errors survive RPC safely with backend retry semantics', async () => {
+    for (const [code, retryable] of [
+        ['GEMINI_NOT_CONFIGURED', false], ['GEMINI_AUTH_FAILED', false],
+        ['GEMINI_RATE_LIMITED', true], ['GEMINI_TIMEOUT', true],
+        ['GEMINI_UNAVAILABLE', true], ['GEMINI_INVALID_RESPONSE', true]
+    ]) {
+        await withServer((_req, res) => {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: { code, retryable, message: 'private-key-secret raw-prompt' } }));
+        }, async address => {
+            await assert.rejects(createGoldieApi(address).offer(offer), error => {
+                const codec = new RpcProxyFactory();
+                const restored = codec.deserializeError(new Error('captured'), codec.serializeError(error));
+                assert.equal(restored.code, retryable ? -32002 : -32001);
+                assert.equal(restored.data.apiCode, code);
+                assert.doesNotMatch(JSON.stringify(error.toJson()), /private-key-secret|raw-prompt|\/Users\//);
+                assert.doesNotMatch(JSON.stringify(restored.toJson()), /private-key-secret|raw-prompt/);
+                return true;
+            });
+        });
+    }
+});
+
+test('generation has its own deadline while ordinary actions keep the shorter deadline', async () => {
+    await withServer((_req, res) => {
+        setTimeout(() => { res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ shouldOffer: false, previewTopics: [] })); }, 70);
+    }, async address => {
+        assert.deepEqual(await createGoldieApi(address, { timeoutMs: 20, generationTimeoutMs: 300 }).offer(offer),
+            { shouldOffer: false, previewTopics: [] });
+    });
+    await withServer((_req, res) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.write('{'); },
+        async address => assert.rejects(createGoldieApi(address, { generationTimeoutMs: 40 }).teach(cases[2][2]), /too long/));
+});
+
+test('rejects inconsistent offers and duplicate or unbounded generated phase IDs', async () => {
+    for (const output of [
+        { shouldOffer: true, previewTopics: [], offerId: 'offer' },
+        { shouldOffer: true, previewTopics: ['Topic'] },
+        { shouldOffer: false, previewTopics: ['Topic'] },
+        { shouldOffer: false, previewTopics: [], offerId: 'offer' }
+    ]) {
+        await withServer((_req, res) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(output)); },
+            async address => assert.rejects(createGoldieApi(address).offer(offer), /invalid response/));
+    }
+    for (const phases of [[], [...session.phases, ...session.phases],
+        Array.from({ length: 7 }, (_, index) => ({ ...session.phases[0], id: `p${index}` }))]) {
+        await withServer((_req, res) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ ...session, phases })); },
+            async address => assert.rejects(createGoldieApi(address).startSession(cases[1][2]), /invalid response/));
+    }
+});
+
+test('rejects inconsistent session references on acceptance, restoration and action responses', async () => {
+    for (const invalid of [
+        { ...session, activePhaseId: 'missing' }, { ...session, activePhaseId: undefined },
+        { ...session, completedIds: ['missing'] }, { ...session, completedIds: ['phase'], skippedIds: ['phase'] },
+        { ...session, status: 'completed' },
+        { ...session, questionHistory: [{ question: 'Why?', answer: 'Because.', resumePhaseId: 'missing' }] }
+    ]) {
+        await withServer((_req, res) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(invalid)); },
+            async address => {
+                const api = createGoldieApi(address);
+                await assert.rejects(api.startSession(cases[1][2]), /invalid response/);
+                await assert.rejects(api.getSession('session'), /invalid response/);
+                await assert.rejects(api.action('session', { actionId: 'a1', action: 'pause' }), /invalid response/);
+            });
+    }
+});
+
 test('unknown, malformed and oversized API errors stay generic and bounded', async () => {
     for (const body of [
         JSON.stringify({ error: { code: 'PRIVATE_SECRET', retryable: false, message: 'provider-key-secret' } }),

@@ -413,6 +413,7 @@
 }
 
 .goldie-panel button:focus-visible,
+.goldie-panel select:focus-visible,
 .goldie-panel textarea:focus-visible { outline: 1px solid var(--theia-focusBorder); outline-offset: 2px; }
 
 @container (max-width: 360px) {
@@ -429,3 +430,12 @@
 @media (prefers-reduced-motion: reduce) {
     .goldie-panel * { scroll-behavior: auto !important; }
 }
+
+.goldie-context-controls { margin-top: 18px; min-width: 0; }
+.goldie-context-controls label { display: block; margin-bottom: 7px; font-size: 12px; font-weight: 600; }
+.goldie-context-controls select {
+    box-sizing: border-box; width: 100%; min-height: 30px; padding: 5px 8px;
+    border: 1px solid var(--theia-dropdown-border, var(--theia-panel-border)); border-radius: 3px;
+    background: var(--theia-dropdown-background); color: var(--theia-dropdown-foreground); font: inherit;
+}
+.goldie-context-controls select:disabled { color: var(--theia-disabledForeground); }

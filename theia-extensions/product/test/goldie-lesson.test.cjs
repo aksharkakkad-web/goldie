@@ -4,6 +4,9 @@ const assert = require('node:assert/strict');
 const schemas = require('@goldie/contracts');
 const { GoldieLessonController } = require('../lib/browser/goldie/goldie-lesson-controller');
 const { GoldieAudioPlayer } = require('../lib/browser/goldie/goldie-audio-player');
+// Replace the file picker desktop host before real widget modules are loaded.
+const fileDialogPath = require.resolve('@theia/filesystem/lib/browser/file-dialog/file-dialog-service');
+require.cache[fileDialogPath] = { id: fileDialogPath, filename: fileDialogPath, loaded: true, exports: { FileDialogService: class {} } };
 
 // Replace only the browser media device and external service; player/controller are real.
 class MediaElement {
@@ -63,6 +66,7 @@ function setup(count = 3, storage = memory()) {
     };
     const audio = new GoldieAudioPlayer();
     const controller = new GoldieLessonController(service, audio, storage);
+    if (controller.canChangeContext) { controller.setContext('# Example app\nBuild a team management app with forms, permissions and a database.', 'beginner', 'Team management'); }
     return { controller, audio, service, calls, storage, session: () => session, setSession: value => { session = schemas.SessionResponseSchema.parse(value); } };
 }
 async function start(controller) { await controller.checkOffer(); await controller.acceptOffer(); }
@@ -70,7 +74,7 @@ function clip() { return MediaElement.instances.at(-1); }
 
 test('explicit selector offers without speech and decline never accepts', async () => {
     const { controller, calls } = setup(); await controller.checkOffer();
-    assert.equal(calls.offer[0].referenceLessonId, 'webapp-architecture'); assert.equal(calls.offer[0].revision, 1);
+    assert.equal(calls.offer[0].referenceLessonId, undefined); assert.equal(calls.offer[0].revision, 1);
     controller.declineOffer(); assert.equal(controller.state.view, 'idle'); assert.equal(calls.start.length, 0); assert.equal(calls.speech.length, 0); controller.dispose();
 });
 test('accepted lesson requests standard text then speech by content ID', async () => {
@@ -181,9 +185,9 @@ test('failed final closure preserves completed intent even when End retries it',
     await controller.nextPhase(); assert.ok(controller.state.error); await controller.endSession();
     assert.deepEqual(calls.complete.map(value => value.status), ['completed', 'completed']); assert.equal(controller.state.view, 'recap'); controller.dispose();
 });
-test('only explicit Find another lesson advances sample revision after closure', async () => {
+test('Find another lesson preserves context revision after closure', async () => {
     const { controller, calls } = setup(1); await start(controller); await controller.checkOffer(); assert.equal(calls.offer.length, 1);
-    await controller.endSession(); await controller.checkOffer(); assert.equal(calls.offer[1].revision, 2); assert.equal(calls.offer[1].referenceLessonId, 'webapp-architecture'); controller.dispose();
+    await controller.endSession(); await controller.checkOffer(); assert.equal(calls.offer[1].revision, 1); assert.equal(calls.offer[1].referenceLessonId, undefined); controller.dispose();
 });
 test('dispose invalidates pending responses and releases player resources', async () => {
     const { controller, service } = setup(); const response = deferred(); service.offer = () => response.promise; let notifications = 0; controller.subscribe(() => notifications++);
@@ -201,7 +205,7 @@ test('real player publishes current clip timing and ignores released clip update
 test('real widget presents architecture estimate, conceptual scope, explicit text completion and supported questions', async () => {
     const { renderWidget } = require('./goldie-widget-test-utils.cjs');
     const { controller } = setup(); await controller.checkOffer();
-    const offer = renderWidget(controller.state); assert.match(offer, /architecture/i); assert.match(offer, /3 min/);
+    const offer = renderWidget(controller.state); assert.match(offer, /handoff and knowledge level/i); assert.match(offer, /3 min/);
     await controller.acceptOffer(); const lesson = renderWidget(controller.state);
     assert.match(lesson, /Explain more/); assert.match(lesson, /Mark read/); assert.match(lesson, /Conceptual/); assert.doesNotMatch(lesson, /mastered/i);
     await controller.askQuestion('What is an API?'); const answer = renderWidget(controller.state);
@@ -260,14 +264,14 @@ test('pending acceptance survives disposal before its response and restores with
     service.startSession = async request => { const session = await startSession(request); await delay.promise; return session; };
     await controller.checkOffer(); const pending = controller.acceptOffer();
     for (let i = 0; i < 30 && !calls.start.length; i++) { await tick(); }
-    assert.deepEqual(JSON.parse(storage.getItem('goldie.reference-session.v1')), { offerId: 'o1', revision: 1 });
+    assert.deepEqual(JSON.parse(storage.getItem('goldie.lesson-recovery.v2')), { version: 2, offerId: 'o1', revision: 1, context: controller.state.context });
     controller.dispose(); service.startSession = startSession;
     const restored = new GoldieLessonController(service, new GoldieAudioPlayer(), storage);
     await restored.restore(); delay.resolve(); await pending;
     assert.equal(restored.state.session.sessionId, 's1'); assert.equal(restored.state.restored, true);
     assert.equal(restored.state.audioState, 'paused'); assert.equal(calls.start.length, 2); assert.deepEqual(calls.start[0], calls.start[1]);
     assert.equal(calls.teach.length, 0); assert.equal(calls.speech.length, 0);
-    assert.deepEqual(JSON.parse(storage.getItem('goldie.reference-session.v1')), { sessionId: 's1', revision: 1 }); restored.dispose();
+    assert.deepEqual(JSON.parse(storage.getItem('goldie.lesson-recovery.v2')), { version: 2, sessionId: 's1', revision: 1, context: controller.state.context }); restored.dispose();
 });
 
 test('lost acceptance response recovers the same session after restart without autoplay', async () => {
@@ -281,17 +285,17 @@ test('lost acceptance response recovers the same session after restart without a
 });
 
 test('unavailable recovery storage prevents acceptance until the user can retry saving', async () => {
-    const storage = memory(); const save = storage.setItem; storage.setItem = () => { throw new Error('Storage unavailable'); };
-    const { controller, calls } = setup(3, storage); await start(controller);
+    const storage = memory(); const save = storage.setItem;
+    const { controller, calls } = setup(3, storage); storage.setItem = () => { throw new Error('Storage unavailable'); }; await start(controller);
     assert.equal(calls.start.length, 0); assert.match(controller.state.error, /save.*recover/i); assert.equal(controller.state.retryable, true);
     storage.setItem = save; await controller.retry(); assert.equal(controller.state.session.sessionId, 's1'); controller.dispose();
 });
 
 test('failed session-reference replacement retains the persisted pending offer for recovery', async () => {
     const storage = memory(); const save = storage.setItem; let writes = 0;
-    storage.setItem = (...args) => { if (++writes === 2) { throw new Error('Disk full'); } save(...args); };
+    storage.setItem = (...args) => { if (++writes === 3) { throw new Error('Disk full'); } save(...args); };
     const { controller, service, calls } = setup(3, storage); await start(controller);
-    assert.deepEqual(JSON.parse(storage.getItem('goldie.reference-session.v1')), { offerId: 'o1', revision: 1 });
+    assert.deepEqual(JSON.parse(storage.getItem('goldie.lesson-recovery.v2')), { version: 2, offerId: 'o1', revision: 1, context: controller.state.context });
     assert.match(controller.state.error, /save/i); controller.dispose(); const speechBefore = calls.speech.length;
     const restored = new GoldieLessonController(service, new GoldieAudioPlayer(), storage); await restored.restore();
     assert.equal(restored.state.session.sessionId, 's1'); assert.equal(calls.start.length, 2); assert.equal(calls.speech.length, speechBefore); restored.dispose();
@@ -316,4 +320,124 @@ test('nonretryable lesson speech offers explicit Play after correction without a
     assert.match(markup, /Play lesson audio/); assert.doesNotMatch(markup, /Retry lesson audio/); assert.doesNotMatch(markup, /Retry last request/);
     await controller.retry(); assert.equal(attempts, 1); service.speech = speak; await controller.playPause();
     assert.equal(controller.state.audioState, 'playing'); controller.dispose();
+});
+
+test('live context goes unchanged to offer, acceptance, teach, ask and completion', async () => {
+    const { controller, calls } = setup(); const snapshot = controller.state.context;
+    await start(controller); await controller.askQuestion('What is an API?'); await controller.endSession();
+    for (const request of [calls.offer[0], calls.start[0], calls.teach[0]]) {
+        assert.equal(request.handoff, snapshot.handoff); assert.deepEqual(request.profile, snapshot.profile);
+        assert.equal(request.referenceLessonId, undefined);
+    }
+    assert.equal(calls.offer[0].projectId, 'goldie-stage2-sample');
+    assert.equal(calls.ask[0].handoff, snapshot.handoff); assert.equal(calls.complete[0].handoff, snapshot.handoff);
+    assert.equal(calls.complete[0].currentRevision, snapshot.revision); controller.dispose();
+});
+test('revision changes only with handoff or profile, survives restart, and declined retries do not create speech', async () => {
+    const { controller, calls, storage, service } = setup(); const snapshot = controller.state.context;
+    controller.setContext(snapshot.handoff, 'beginner', 'Renamed'); assert.equal(controller.state.context.revision, 1);
+    controller.setKnowledgeLevel('intermediate'); assert.equal(controller.state.context.revision, 2);
+    controller.setContext(`${snapshot.handoff}\nStatus: implemented`, 'intermediate'); assert.equal(controller.state.context.revision, 3);
+    await controller.checkOffer(); controller.declineOffer(); await controller.checkOffer(); controller.declineOffer();
+    assert.deepEqual(calls.offer.map(value => value.revision), [3, 3]); assert.equal(calls.start.length, 0); assert.equal(calls.speech.length, 0);
+    const latest = controller.state.context; controller.dispose();
+    const restored = new GoldieLessonController(service, new GoldieAudioPlayer(), storage);
+    assert.deepEqual(restored.state.context, latest); restored.setContext(latest.handoff, 'intermediate');
+    assert.equal(restored.state.context.revision, 3); restored.setKnowledgeLevel('beginner'); assert.equal(restored.state.context.revision, 4); restored.dispose();
+});
+test('context changes are blocked during requests, offers, active lessons, questions and pending recovery', async () => {
+    const { controller, service, storage } = setup(); const original = controller.state.context; const offer = service.offer; const delay = deferred();
+    service.offer = async request => { await delay.promise; return offer(request); };
+    const finding = controller.checkOffer(); assert.equal(controller.state.operation, 'offer');
+    assert.throws(() => controller.setContext('Changed', 'intermediate')); delay.resolve(); await finding;
+    assert.equal(controller.canChangeContext, false); assert.throws(() => controller.setKnowledgeLevel('intermediate'));
+    await controller.acceptOffer(); assert.throws(() => controller.setContext('Changed', 'intermediate'));
+    await controller.askQuestion('What is an API?'); assert.throws(() => controller.setContext('Changed', 'intermediate'));
+    assert.deepEqual(controller.state.context, original); controller.dispose();
+    const restored = new GoldieLessonController(service, new GoldieAudioPlayer(), storage);
+    assert.equal(restored.canChangeContext, false); assert.throws(() => restored.setContext('Changed', 'intermediate'));
+    await restored.restore(); assert.equal(restored.canChangeContext, false); await restored.endSession(); assert.equal(restored.canChangeContext, true);
+    restored.setContext('A different task', 'intermediate', 'New'); assert.equal(restored.state.view, 'idle'); assert.equal(restored.state.session, undefined);
+    assert.equal(restored.state.context.revision, 2); restored.dispose();
+});
+for (const count of [1, 2, 5]) {
+    test(`arbitrary IDs and ${count} phases use the server roadmap`, async () => {
+        const fixture = setup(count); const session = fixture.session(); const ids = Array.from({ length: count }, (_, index) => `concept-${index * 7 + 13}`);
+        // setup action fixture uses its original phases array; mutate that shared fixture array in place.
+        session.phases.forEach((phase, index) => { phase.id = ids[index]; }); session.activePhaseId = ids[0];
+        await start(fixture.controller);
+        for (const id of ids) {
+            assert.equal(fixture.controller.state.session.activePhaseId, id); await fixture.controller.nextPhase();
+        }
+        assert.equal(fixture.controller.state.view, 'recap'); assert.deepEqual(Object.keys(fixture.controller.state.statuses), ids);
+        assert.ok(Object.values(fixture.controller.state.statuses).every(status => status === 'heard')); fixture.controller.dispose();
+    });
+}
+test('speech retry after acceptance does not create another session or regenerate teaching', async () => {
+    const { controller, calls, service } = setup(); const speech = service.speech; let failed = false;
+    service.speech = async request => { if (!failed) { failed = true; throw new Error('Temporary speech failure'); } return speech(request); };
+    await start(controller); await controller.retry();
+    assert.equal(calls.start.length, 1); assert.equal(calls.teach.length, 1); assert.equal(controller.state.audioState, 'playing'); controller.dispose();
+});
+test('malformed pending snapshot and legacy pending acceptance remain preserved without unsafe replay', async () => {
+    for (const [key, value] of [
+        ['goldie.lesson-recovery.v2', { version: 2, offerId: 'accepted', revision: 1, context: { handoff: '', profile: { level: 'beginner' } } }],
+        ['goldie.reference-session.v1', { offerId: 'prepared', revision: 1 }]
+    ]) {
+        const storage = memory(); storage.setItem(key, JSON.stringify(value)); const fixture = setup(3, storage);
+        assert.equal(fixture.controller.canChangeContext, false); await fixture.controller.restore(); await fixture.controller.checkOffer();
+        assert.match(fixture.controller.state.error, /preserved/); assert.equal(storage.getItem(key), JSON.stringify(value));
+        assert.equal(fixture.calls.start.length, 0); assert.equal(fixture.calls.offer.length, 0); fixture.controller.dispose();
+    }
+});
+test('no loaded handoff cannot call live endpoints; confirmed legacy session still restores without autoplay', async () => {
+    const fixture = setup(); const empty = new GoldieLessonController(fixture.service, new GoldieAudioPlayer(), memory());
+    await empty.checkOffer(); assert.equal(fixture.calls.offer.length, 0); assert.match(empty.state.error, /Load a handoff/); empty.dispose(); fixture.controller.dispose();
+    const legacy = memory(); legacy.setItem('goldie.reference-session.v1', JSON.stringify({ sessionId: 's1', revision: 1 }));
+    const restored = new GoldieLessonController(fixture.service, new GoldieAudioPlayer(), legacy); await restored.restore();
+    assert.equal(restored.state.session.sessionId, 's1'); assert.equal(restored.state.context, undefined); assert.equal(restored.state.audioState, 'paused');
+    assert.equal(fixture.calls.teach.length, 0); assert.equal(fixture.calls.speech.length, 0); restored.dispose();
+});
+
+for (const apiCode of ['CONTEXT_CONFLICT', 'REVISION_CONFLICT', 'OFFER_NOT_FOUND']) {
+    test(`confirmed ${apiCode} archives acceptance and permits new context after declining`, async () => {
+        const { controller, service, calls, storage } = setup(); const original = controller.state.context;
+        service.startSession = async request => {
+            calls.start.push(clone(request));
+            throw Object.assign(new Error('This offer cannot be accepted.'), { code: -32001, data: { apiCode } });
+        };
+        await start(controller);
+        assert.equal(controller.state.view, 'offer'); assert.equal(controller.state.error, 'This offer cannot be accepted.');
+        assert.equal(controller.state.retryable, false); assert.equal(controller.canChangeContext, false);
+        assert.equal(storage.getItem('goldie.lesson-recovery.v2'), 'null');
+        assert.deepEqual(JSON.parse(storage.getItem('goldie.rejected-acceptance.v2')), [
+            { version: 2, offerId: 'o1', revision: 1, context: original, apiCode }
+        ]);
+        controller.declineOffer(); assert.equal(controller.canChangeContext, true);
+        controller.setContext('Build an event-driven API', 'intermediate', 'Event API'); await controller.checkOffer();
+        assert.equal(calls.offer.length, 2); assert.equal(calls.offer[1].revision, 2); assert.equal(calls.offer[1].handoff, 'Build an event-driven API');
+        assert.equal(calls.get.length, 0); assert.equal(calls.start.length, 1); controller.dispose();
+    });
+}
+for (const failure of [new Error('Network response lost'), { code: -32001, data: { apiCode: 'AUTH_REQUIRED' } },
+    { code: -32001, data: { apiCode: 'UNEXPECTED_PROVIDER_ERROR' } }, { code: -32002, data: { apiCode: 'CONTEXT_CONFLICT' } }]) {
+    test(`uncertain acceptance failure ${failure.message ?? failure.data.apiCode} preserves exact pending snapshot`, async () => {
+        const { controller, service, calls, storage } = setup(); const startSession = service.startSession;
+        service.startSession = async request => { await startSession(request); throw failure; };
+        await start(controller); const saved = storage.getItem('goldie.lesson-recovery.v2'); const snapshot = controller.state.context;
+        assert.deepEqual(JSON.parse(saved), { version: 2, offerId: 'o1', revision: 1, context: snapshot });
+        assert.equal(storage.getItem('goldie.rejected-acceptance.v2'), null);
+        controller.declineOffer(); assert.equal(controller.canChangeContext, false); controller.dispose(); service.startSession = startSession;
+        const restored = new GoldieLessonController(service, new GoldieAudioPlayer(), storage); await restored.restore();
+        assert.deepEqual(calls.start[1], calls.start[0]); assert.equal(restored.state.session.sessionId, 's1');
+        assert.equal(calls.offer.length, 1); assert.equal(calls.teach.length, 0); assert.equal(calls.speech.length, 0); restored.dispose();
+    });
+}
+test('failed rejection archive preserves pending acceptance for safe recovery', async () => {
+    const { controller, service, storage } = setup(); const write = storage.setItem;
+    storage.setItem = (key, value) => { if (key === 'goldie.rejected-acceptance.v2') { throw new Error('Disk full'); } write(key, value); };
+    service.startSession = async () => { throw Object.assign(new Error('Conflict'), { code: -32001, data: { apiCode: 'CONTEXT_CONFLICT' } }); };
+    await start(controller); assert.match(controller.state.error, /recovery data is preserved/);
+    assert.equal(JSON.parse(storage.getItem('goldie.lesson-recovery.v2')).offerId, 'o1');
+    controller.declineOffer(); assert.equal(controller.canChangeContext, false); controller.dispose();
 });

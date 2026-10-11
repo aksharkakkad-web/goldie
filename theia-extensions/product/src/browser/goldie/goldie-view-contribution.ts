@@ -34,6 +34,12 @@ export class GoldieViewContribution extends AbstractViewContribution<GoldieWidge
 
     registerCommands(commands: CommandRegistry): void {
         super.registerCommands(commands);
+        commands.registerCommand({ id: 'goldie:load-sample-handoff', category: 'Goldie', label: 'Load sample handoff' }, {
+            execute: async () => {
+                const widget = await this.openView({ activate: true, reveal: true });
+                await widget.loadSampleHandoff();
+            }
+        });
         commands.registerCommand({ id: 'goldie:open-panel', category: 'Goldie', label: 'Open Panel' }, {
             execute: () => this.openView({ activate: true, reveal: true })
         });

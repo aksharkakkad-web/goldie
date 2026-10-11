@@ -1,12 +1,15 @@
 // Copyright (C) 2026 Goldie contributors. SPDX-License-Identifier: MIT
 import type { AskResponse, CompleteResponse, OfferResponse, SessionActionRequest, SessionResponse, TeachResponse } from '@goldie/contracts';
 import { GOLDIE_NONRETRYABLE_ERROR_CODE, GoldieService } from '../../common/goldie-service';
+import { createGoldieContext, GoldieContextSnapshot, KnowledgeLevel, parseGoldieContext } from './goldie-context';
 import { GoldieAudioAdapter, GoldieAudioPlayer, GoldieAudioState } from './goldie-audio-player';
 
 export type GoldiePhaseStatus = 'pending' | 'heard' | 'skipped' | 'familiar';
 export interface GoldieLessonState {
     readonly view: 'idle' | 'offer' | 'lesson' | 'question' | 'recap';
     readonly busy: boolean;
+    readonly context?: GoldieContextSnapshot;
+    readonly operation?: string;
     readonly error?: string;
     readonly retryable?: boolean;
     readonly restored?: boolean;
@@ -24,13 +27,15 @@ export interface GoldieLessonState {
     readonly audioDuration?: number;
 }
 
-interface SessionReference { sessionId: string; revision: number; }
-interface AcceptanceReference { offerId: string; revision: number; }
+interface SessionReference { sessionId: string; revision: number; context?: GoldieContextSnapshot; }
+interface AcceptanceReference { offerId: string; revision: number; context: GoldieContextSnapshot; }
 type RecoveryReference = SessionReference | AcceptanceReference;
 type Storage = Pick<globalThis.Storage, 'getItem' | 'setItem'>;
 type Work = (token: number) => Promise<void>;
-const storageKey = 'goldie.reference-session.v1';
-const context = { handoff: '', profile: {} };
+const storageKey = 'goldie.lesson-recovery.v2';
+const legacyStorageKey = 'goldie.reference-session.v1';
+const contextKey = 'goldie.context.v2';
+const rejectedAcceptanceKey = 'goldie.rejected-acceptance.v2';
 function browserStorage(): Storage | undefined {
     try { return globalThis.localStorage; } catch { return undefined; }
 }
@@ -44,7 +49,8 @@ export class GoldieLessonController {
     private lessonAudioReady = false;
     private answerAudioReady = false;
     private reference?: RecoveryReference;
-    private revision = 1;
+    private revision = 0;
+    private recoveryError?: string;
     private pendingAction?: SessionActionRequest;
     private pendingClosure?: 'completed' | 'dismissed';
     private mutation?: Promise<unknown>;
@@ -55,16 +61,34 @@ export class GoldieLessonController {
     constructor(private readonly service: GoldieService, private readonly audio: GoldieAudioAdapter = new GoldieAudioPlayer(),
         private readonly storage: Storage | undefined = browserStorage()) {
         try {
-            const saved = this.storage?.getItem(storageKey);
-            if (saved) {
-                const value: RecoveryReference = JSON.parse(saved);
-                const id = 'sessionId' in value ? value.sessionId : value.offerId;
-                if (typeof id === 'string' && id.length > 0 && id.length <= 128 && Number.isSafeInteger(value.revision) && value.revision >= 0) {
-                    this.reference = 'sessionId' in value ? { sessionId: id, revision: value.revision } : { offerId: id, revision: value.revision };
-                    this.revision = value.revision;
-                }
+            const savedContext = this.storage?.getItem(contextKey);
+            if (savedContext) {
+                const snapshot = parseGoldieContext(JSON.parse(savedContext));
+                this.revision = snapshot.revision;
+                this.current = { ...this.current, context: snapshot };
             }
-        } catch { /* Unavailable local storage must not stop a new lesson. */ }
+        } catch { this.current = { ...this.current, error: 'Saved context is invalid. Load the handoff again.' }; }
+        try {
+            const saved = this.storage?.getItem(storageKey);
+            const legacy = saved ? undefined : this.storage?.getItem(legacyStorageKey);
+            if ((saved && saved !== 'null') || legacy) {
+                const value = JSON.parse(saved || legacy!);
+                const id = 'sessionId' in value ? value.sessionId : value.offerId;
+                if (typeof id !== 'string' || !id.length || id.length > 128 || !Number.isSafeInteger(value.revision) || value.revision < 0) {
+                    throw new Error('Invalid recovery reference');
+                }
+                const snapshot = value.context ? parseGoldieContext(value.context) : undefined;
+                if (saved && (value.version !== 2 || !snapshot || snapshot.revision !== value.revision)) { throw new Error('Invalid saved context'); }
+                if (!('sessionId' in value) && !snapshot) { throw new Error('Legacy pending acceptance has no recoverable handoff'); }
+                this.reference = 'sessionId' in value ? { sessionId: id, revision: value.revision, context: snapshot }
+                    : { offerId: id, revision: value.revision, context: snapshot! };
+                this.revision = Math.max(this.revision, value.revision);
+                this.current = { ...this.current, context: snapshot };
+            }
+        } catch {
+            this.recoveryError = 'Saved lesson recovery is missing valid context. Its saved data has been preserved; recovery cannot safely replay this request.';
+            this.current = { ...this.current, error: this.recoveryError, retryable: false };
+        }
         this.unsubscribeAudio = audio.subscribe((audioState, track, progress) => {
             if (this.disposed || (track === 'lesson' && this.current.view !== 'lesson') || (track === 'answer' && this.current.view !== 'question')) { return; }
             if (audioState === 'error') {
@@ -79,6 +103,43 @@ export class GoldieLessonController {
     }
 
     get state(): GoldieLessonState { return this.current; }
+    get canChangeContext(): boolean {
+        return !this.disposed && !this.current.busy && !this.pendingAction && !this.pendingClosure && !this.recoveryError
+            && (!this.reference || this.current.view === 'recap') && ['idle', 'recap'].includes(this.current.view);
+    }
+    setContext(handoff: string, level: KnowledgeLevel, name?: string): void {
+        if (!this.canChangeContext) { throw new Error('Finish or recover the current lesson before changing context.'); }
+        const previous = this.current.context;
+        const changed = !previous || previous.handoff !== handoff || previous.profile.level !== level;
+        const snapshot = createGoldieContext(handoff, level, changed ? this.revision + 1 : previous.revision, name ?? previous?.name);
+        // Persist the snapshot before publishing it so revisions remain stable across restarts.
+        try { this.storage?.setItem(contextKey, JSON.stringify(snapshot)); } catch { throw new Error('Goldie could not save this context. Enable local storage and try again.'); }
+        if (this.current.view === 'recap') { this.clearTerminal(); }
+        this.revision = snapshot.revision;
+        this.generation++;
+        this.retryWork = undefined;
+        this.update({ context: snapshot, error: undefined, retryable: false });
+    }
+    setKnowledgeLevel(level: KnowledgeLevel): void {
+        const snapshot = this.current.context;
+        if (snapshot) { this.setContext(snapshot.handoff, level, snapshot.name); }
+    }
+    private clearTerminal(): void {
+        // Save the tombstone before clearing in-memory recovery. Failed storage preserves the recap.
+        try { this.storage?.setItem(storageKey, 'null'); } catch {
+            throw new Error('Goldie could not save the end of this lesson. Enable local storage, then retry.');
+        }
+        this.resetAudio();
+        this.reference = undefined;
+        this.pendingClosure = undefined;
+        this.update({ session: undefined, recap: undefined, offer: undefined, view: 'idle', statuses: {}, phaseIndex: 0,
+            explanation: undefined, answer: undefined, addOn: undefined, question: undefined, restored: false, audioState: 'idle' });
+    }
+    private requestContext(): { handoff: string; profile: GoldieContextSnapshot['profile'] | Record<string, unknown> } {
+        const snapshot = this.current.context;
+        // Only pre-Stage2 confirmed sessions can lack context; preserve their prepared-session recovery.
+        return snapshot ? { handoff: snapshot.handoff, profile: snapshot.profile } : { handoff: '', profile: {} };
+    }
     subscribe(listener: (state: GoldieLessonState) => void): () => void {
         this.listeners.add(listener);
         listener(this.current);
@@ -86,10 +147,12 @@ export class GoldieLessonController {
     }
     async restore(): Promise<void> {
         const reference = this.reference;
+        if (this.recoveryError) { this.update({ error: this.recoveryError, retryable: false }); return; }
         if (!reference || this.current.session || this.current.busy) { return; }
         await this.run(async token => {
+            this.update({ operation: 'restore' });
             const session = 'sessionId' in reference ? await this.service.getSession(reference.sessionId)
-                : await this.mutate(this.service.startSession({ offerId: reference.offerId, revision: reference.revision, ...context }));
+                : await this.startAcceptance(reference, token);
             if (!this.valid(token)) { return; }
             this.resetAudio();
             this.applySession(session);
@@ -102,14 +165,13 @@ export class GoldieLessonController {
     async checkOffer(): Promise<void> {
         if (this.reference && !this.current.session) { await this.restore(); return; }
         if (this.current.session && this.current.view !== 'recap') { return; }
-        if (this.current.view === 'recap') {
-            this.revision = Math.max(this.revision, this.current.session?.snapshotRevision ?? 0) + 1;
-            this.reference = undefined;
-            this.pendingClosure = undefined;
-            this.update({ session: undefined, recap: undefined, view: 'idle' });
-        }
+        if (this.recoveryError) { this.update({ error: this.recoveryError }); return; }
+        const snapshot = this.current.context;
+        if (!snapshot) { this.update({ error: 'Load a handoff before finding a lesson.', retryable: false }); return; }
         await this.run(async token => {
-            const offer = await this.service.offer({ projectId: 'goldie-reference', revision: this.revision, referenceLessonId: 'webapp-architecture', ...context });
+            if (this.current.view === 'recap') { this.clearTerminal(); }
+            this.update({ operation: 'offer' });
+            const offer = await this.service.offer({ projectId: snapshot.projectId, revision: snapshot.revision, handoff: snapshot.handoff, profile: snapshot.profile });
             if (offer.shouldOffer && !offer.offerId) { throw new Error('Goldie returned an offer without an ID. Try finding a lesson again.'); }
             if (this.valid(token)) { this.update({ view: offer.shouldOffer ? 'offer' : 'idle', offer }); }
         });
@@ -123,15 +185,23 @@ export class GoldieLessonController {
     async acceptOffer(): Promise<void> {
         const offerId = this.current.offer?.offerId;
         if (this.current.view !== 'offer' || !offerId) { return; }
-        const acceptance: AcceptanceReference = { offerId, revision: this.revision };
+        const snapshot = this.current.context;
+        if (!snapshot) { return; }
+        const acceptance: AcceptanceReference = { offerId, revision: snapshot.revision, context: snapshot };
+        let accepted = false;
         await this.run(async token => {
             // Save accepted intent before the network call: acceptance may succeed without a response.
-            this.saveReference(acceptance);
-            const session = await this.mutate(this.service.startSession({ ...acceptance, ...context }));
-            if (!this.valid(token)) { return; }
-            this.resetAudio();
-            this.applySession(session);
-            this.update({ view: 'lesson', explanation: undefined, answer: undefined, addOn: undefined, restored: false });
+            if (!accepted) {
+                this.update({ operation: 'accept' });
+                this.saveReference(acceptance);
+                const started = await this.startAcceptance(acceptance, token);
+                if (!this.valid(token)) { return; }
+                this.resetAudio();
+                this.applySession(started);
+                this.update({ view: 'lesson', explanation: undefined, answer: undefined, addOn: undefined, restored: false });
+                accepted = true;
+            }
+            const session = this.current.session!;
             if (this.terminal(session) || !session.activePhaseId) {
                 await this.close(this.terminal(session) ? session.status as 'completed' | 'dismissed' : 'completed', token);
             } else if (session.status === 'learning') { await this.teach(token); }
@@ -236,14 +306,17 @@ export class GoldieLessonController {
             if (!this.valid(token)) { return; }
             if (expanded) {
                 if (!this.current.addOn) {
-                    const addOn = await this.service.teach({ sessionId: session.sessionId, phaseId: phase.id, detail: 'expanded', ...context });
+                    this.update({ operation: 'teach' });
+                    const addOn = await this.service.teach({ sessionId: session.sessionId, phaseId: phase.id, detail: 'expanded', ...this.requestContext() });
                     if (!this.valid(token)) { return; }
                     this.update({ addOn });
                 }
                 await this.speak(this.current.addOn!.contentId, 'answer', token);
             } else {
                 if (!this.current.answer) {
-                    const answer = await this.mutate(this.service.ask({ sessionId: session.sessionId, phaseId: phase.id, question: question!, handoff: context.handoff }));
+                    this.update({ operation: 'ask' });
+                    const answer = await this.mutate(this.service.ask({ sessionId: session.sessionId, phaseId: phase.id, question: question!,
+                        handoff: this.requestContext().handoff }));
                     if (!this.valid(token)) { return; }
                     this.update({ answer });
                     const saved = await this.service.getSession(session.sessionId);
@@ -261,6 +334,7 @@ export class GoldieLessonController {
             const actionId = globalThis.crypto.randomUUID();
             this.pendingAction = action === 'pause' || action === 'resume' ? { actionId, action } : { actionId, action, phaseId: this.phase!.id };
         }
+        this.update({ operation: 'action' });
         const saved = await this.mutate(this.service.action(session.sessionId, this.pendingAction!));
         if (!this.valid(token)) { return; }
         this.pendingAction = undefined;
@@ -271,8 +345,7 @@ export class GoldieLessonController {
             session.completedIds.includes(phase.id) ? 'heard' : session.skippedIds.includes(phase.id) ? 'skipped'
                 : session.alreadyKnowIds.includes(phase.id) ? 'familiar' : 'pending'])) as Record<string, GoldiePhaseStatus>;
         const phaseIndex = session.phases.findIndex(phase => phase.id === session.activePhaseId);
-        this.reference = { sessionId: session.sessionId, revision: session.snapshotRevision };
-        this.revision = Math.max(this.revision, session.snapshotRevision);
+        this.reference = { sessionId: session.sessionId, revision: this.current.context?.revision ?? session.snapshotRevision, context: this.current.context };
         this.update({ session, statuses, phaseIndex });
         try { this.saveReference(this.reference); } catch {
             this.update({ error: 'Your lesson is open, but this device could not save its reference for reopening.' });
@@ -281,15 +354,43 @@ export class GoldieLessonController {
     private saveReference(reference: RecoveryReference): void {
         try {
             if (!this.storage) { throw new Error('Local storage unavailable'); }
-            this.storage.setItem(storageKey, JSON.stringify(reference));
+            this.storage.setItem(reference.context ? storageKey : legacyStorageKey,
+                JSON.stringify(reference.context ? { version: 2, ...reference } : reference));
         } catch { throw new Error('Goldie could not save the lesson recovery reference. Enable local storage, then retry.'); }
         this.reference = reference;
+    }
+    private async startAcceptance(acceptance: AcceptanceReference, token: number): Promise<SessionResponse> {
+        try {
+            return await this.mutate(this.service.startSession({ offerId: acceptance.offerId, revision: acceptance.revision,
+                handoff: acceptance.context.handoff, profile: acceptance.context.profile }));
+        } catch (error) {
+            const failure = error as { code?: number; data?: { apiCode?: string } } | undefined;
+            const apiCode = failure?.data?.apiCode;
+            if (this.valid(token) && failure?.code === GOLDIE_NONRETRYABLE_ERROR_CODE
+                && apiCode && ['CONTEXT_CONFLICT', 'REVISION_CONFLICT', 'OFFER_NOT_FOUND'].includes(apiCode)) {
+                // These responses definitively reject acceptance. Keep its exact snapshot as an archive,
+                // then retire recovery; network/auth/unknown failures can still represent an accepted session.
+                try {
+                    if (!this.storage) { throw new Error('Local storage unavailable'); }
+                    const saved = this.storage.getItem(rejectedAcceptanceKey);
+                    const archive = saved ? JSON.parse(saved) : [];
+                    if (!Array.isArray(archive)) { throw new Error('Invalid rejection archive'); }
+                    this.storage.setItem(rejectedAcceptanceKey, JSON.stringify([...archive, { version: 2, ...acceptance, apiCode }]));
+                    this.storage.setItem(storageKey, 'null');
+                } catch {
+                    throw new Error('Goldie could not archive this rejected offer. Its recovery data is preserved; enable local storage, then retry.');
+                }
+                this.reference = undefined;
+            }
+            throw error;
+        }
     }
     private async teach(token: number): Promise<void> {
         const phase = this.phase;
         const session = this.current.session;
         if (!phase || !session) { return; }
-        const explanation = await this.service.teach({ sessionId: session.sessionId, phaseId: phase.id, detail: 'standard', ...context });
+        this.update({ operation: 'teach' });
+        const explanation = this.current.explanation ?? await this.service.teach({ sessionId: session.sessionId, phaseId: phase.id, detail: 'standard', ...this.requestContext() });
         if (!this.valid(token)) { return; }
         this.update({ explanation });
         await this.speak(explanation.contentId, 'lesson', token);
@@ -297,6 +398,7 @@ export class GoldieLessonController {
     private async speak(contentId: string, track: 'lesson' | 'answer', token: number): Promise<void> {
         const session = this.current.session;
         if (!session) { return; }
+        this.update({ operation: 'speech' });
         const speech = await this.service.speech({ sessionId: session.sessionId, contentId });
         if (!this.valid(token)) { return; }
         this.audio.load(track, speech);
@@ -307,8 +409,9 @@ export class GoldieLessonController {
         const session = this.current.session;
         if (!session) { return; }
         this.pendingClosure ??= status;
+        this.update({ operation: 'complete' });
         const recap = await this.mutate(this.service.complete({ sessionId: session.sessionId, status: this.pendingClosure,
-            currentRevision: this.revision, handoff: context.handoff, learningState: {} }));
+            currentRevision: this.revision, handoff: this.requestContext().handoff, learningState: {} }));
         if (!this.valid(token)) { return; }
         const saved = await this.service.getSession(session.sessionId);
         if (!this.valid(token)) { return; }
@@ -343,7 +446,7 @@ export class GoldieLessonController {
             }
         } finally {
             if (this.valid(token)) {
-                this.update({ busy: false });
+                this.update({ busy: false, operation: undefined });
                 const ended = this.endedDuringWork;
                 this.endedDuringWork = undefined;
                 if (ended?.generation === token && this.valid(token) && ended.phaseId === this.phase?.id && this.current.view === 'lesson'

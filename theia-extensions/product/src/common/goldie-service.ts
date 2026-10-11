@@ -28,8 +28,15 @@ export interface GoldieSpeech {
     dataBase64: string;
 }
 
+export interface GoldieHandoff {
+    handoff: string;
+    name: string;
+}
+
 /** Local IDE transport only. Teaching and provider keys belong to the teaching backend. */
 export interface GoldieService {
+    /** Explicit local Markdown selection only; never sends the file to a provider. */
+    loadHandoff(uri: string): Promise<GoldieHandoff>;
     checkHealth(): Promise<GoldieHealth>;
     offer(request: OfferRequest): Promise<OfferResponse>;
     startSession(request: SessionRequest): Promise<SessionResponse>;

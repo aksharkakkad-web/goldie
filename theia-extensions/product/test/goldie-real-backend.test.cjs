@@ -11,7 +11,7 @@ const { createGoldieApi } = require('../lib/node/goldie-api');
 const { GoldieLessonController } = require('../lib/browser/goldie/goldie-lesson-controller');
 
 for (const lost of [false, true]) {
-    test(`interrupted acceptance recovers through real HTTP without autoplay (${lost ? 'lost response' : 'disposed before response'})`, async () => {
+    test(`interrupted acceptance recovers through real HTTP without autoplay (${lost ? 'lost response' : 'disposed before response'})`, { timeout: 15000 }, async () => {
         const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'goldie-acceptance-'));
         const app = await buildApp(loadConfig({ GOLDIE_DATA_DIR: dataDir }));
         let release;
@@ -33,20 +33,23 @@ for (const lost of [false, true]) {
         let original, restored;
         try {
             const api = createGoldieApi(await app.listen({ host: '127.0.0.1', port: 0 }));
+            // Stage 1 backend fixture is selected only at this test boundary, never in the live controller.
+            const preparedApi = { ...api, offer: request => api.offer({ ...request, referenceLessonId: 'webapp-architecture' }) };
             const values = new Map();
             const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
             const audio = { subscribe: () => () => {}, clear() {}, dispose() {}, pause() {},
                 load() { assert.fail('Restore must not load audio'); }, select() {}, async play() { assert.fail('Restore must not play audio'); } };
-            original = new GoldieLessonController(api, audio, storage);
+            original = new GoldieLessonController(preparedApi, audio, storage);
+            original.setContext('Illustrative architecture handoff for Stage 1 regression.', 'beginner', 'HANDOFF.md');
             await original.checkOffer();
             const pending = original.acceptOffer();
             const savedSession = await accepted;
-            assert.equal(JSON.parse(values.get('goldie.reference-session.v1')).offerId, original.state.offer.offerId);
+            assert.equal(JSON.parse(values.get('goldie.lesson-recovery.v2')).offerId, original.state.offer.offerId);
             if (!lost) { original.dispose(); }
             release();
             await pending;
             original.dispose();
-            restored = new GoldieLessonController(api, audio, storage);
+            restored = new GoldieLessonController(preparedApi, audio, storage);
             await restored.restore();
             assert.equal(restored.state.error, undefined);
             assert.equal(restored.state.session.sessionId, savedSession.sessionId);
@@ -56,7 +59,7 @@ for (const lost of [false, true]) {
             assert.equal(teachingRequests, 0);
             const persisted = JSON.parse(await fs.readFile(path.join(dataDir, 'sessions.json'), 'utf8'));
             assert.equal(persisted.sessions.length, 1);
-            assert.equal(JSON.parse(values.get('goldie.reference-session.v1')).sessionId, savedSession.sessionId);
+            assert.equal(JSON.parse(values.get('goldie.lesson-recovery.v2')).sessionId, savedSession.sessionId);
         } finally {
             release();
             original?.dispose(); restored?.dispose();
