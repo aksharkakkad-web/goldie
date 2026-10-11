@@ -234,6 +234,16 @@ export class GoldieLessonController {
     async skipPhase(): Promise<void> { await this.advance('skip'); }
     async markFamiliar(): Promise<void> { await this.advance('already_know'); }
     async nextPhase(): Promise<void> { await this.advance('phase_completed'); }
+    /** Pause before requesting the microphone; leave the original clip and timestamp intact. */
+    async prepareVoiceQuestion(): Promise<boolean> {
+        if (!this.canCommand() || !this.phase || !['lesson', 'question'].includes(this.current.view)) { return false; }
+        this.audio.pause();
+        this.update({ view: 'question', question: undefined, answer: undefined, addOn: undefined, audioState: 'paused' });
+        await this.run(async token => {
+            if (this.current.session?.status === 'learning') { await this.sendAction('pause', token); }
+        });
+        return !this.disposed && this.current.view === 'question' && !this.current.error && !this.pendingAction && !this.pendingClosure;
+    }
     async askQuestion(question: string): Promise<void> {
         if (!question.trim() || question.trim().length > 1000) { return; }
         await this.interrupt(question.trim(), false);

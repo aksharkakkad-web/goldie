@@ -497,3 +497,21 @@ for (const newer of ['acceptance', 'session', 'same-offer-different-context', 'c
         controller.dispose();
     });
 }
+
+
+test('voice preparation pauses before capture and retains original clip/time through explicit resume', async () => {
+    const { controller, calls } = setup(); await start(controller); const original = clip(); original.currentTime = 17.25;
+    const prepare = controller.prepareVoiceQuestion();
+    assert.equal(controller.state.view, 'question'); assert.equal(controller.state.audioState, 'paused');
+    assert.equal(await prepare, true); assert.equal(calls.ask.length, 0);
+    await controller.askQuestion('Why is this design useful?'); const answer = clip(); answer.emit('ended');
+    assert.equal(controller.state.phaseIndex, 0); await controller.resumeLesson();
+    assert.equal(original.currentTime, 17.25); assert.equal(original.plays, 2);
+    assert.equal(calls.teach.length, 1); assert.equal(calls.speech.length, 2); controller.dispose();
+});
+test('failed server pause prevents microphone preparation without losing progress', async () => {
+    const { controller, service } = setup(); await start(controller); const original = clip(); original.currentTime = 17.25;
+    service.action = async () => { throw new Error('Pause failed'); };
+    assert.equal(await controller.prepareVoiceQuestion(), false);
+    assert.equal(original.currentTime, 17.25); assert.equal(controller.state.phaseIndex, 0); controller.dispose();
+});

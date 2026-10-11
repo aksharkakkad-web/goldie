@@ -17,6 +17,7 @@ import type { KnowledgeLevel } from './goldie-context';
 import { GoldieService } from '../../common/goldie-service';
 import { GoldieLessonController, GoldieLessonState, GoldiePhaseStatus } from './goldie-lesson-controller';
 import { GradientOrb, GradientOrbLevelRef } from './gradient-orb';
+import { GoldieRecorder, GoldieRecorderState } from './goldie-recorder';
 import '../../../src/browser/goldie/goldie-lesson.css';
 
 type ConnectionState = 'Connecting' | 'Connected' | 'Unavailable';
@@ -42,6 +43,17 @@ export class GoldieWidget extends ReactWidget {
     protected loadingHandoff = false;
     protected contextError: string | undefined;
     protected detailsOpen = false;
+    protected recorder = new GoldieRecorder();
+    protected recorderState: GoldieRecorderState = { status: 'idle' };
+    protected unsubscribeRecorder: (() => void) | undefined;
+    protected recordingPreview: string | undefined;
+    protected captureGeneration = 0;
+    private readonly cancelCapture = (): void => {
+        this.captureGeneration++;
+        this.recorder.cancel();
+        this.clearRecordingPreview();
+    };
+    private readonly captureHidden = (): void => { if (document.hidden) { this.cancelCapture(); } };
 
     @postConstruct()
     protected init(): void {
@@ -69,6 +81,14 @@ export class GoldieWidget extends ReactWidget {
             this.update();
         });
 
+        this.unsubscribeRecorder = this.recorder.subscribe(state => {
+            this.recorderState = state;
+            if (state.status === 'idle' || state.status === 'error') { this.clearRecordingPreview(); }
+            this.update();
+        });
+        window.addEventListener('blur', this.cancelCapture);
+        window.addEventListener('pagehide', this.cancelCapture);
+        document.addEventListener('visibilitychange', this.captureHidden);
         this.update();
         this.checkConnection();
         this.lessonController.restore();
@@ -102,11 +122,68 @@ export class GoldieWidget extends ReactWidget {
     }
 
     dispose(): void {
+        this.captureGeneration++;
+        this.unsubscribeRecorder?.();
+        this.recorder.dispose();
+        this.clearRecordingPreview();
+        window.removeEventListener('blur', this.cancelCapture);
+        window.removeEventListener('pagehide', this.cancelCapture);
+        document.removeEventListener('visibilitychange', this.captureHidden);
         clearTimeout(this.connectionTimer);
         this.unsubscribeLesson?.();
         this.unsubscribeLesson = undefined;
         this.lessonController?.dispose();
         super.dispose();
+    }
+
+    protected onAfterHide(msg: Message): void {
+        this.cancelCapture();
+        super.onAfterHide(msg);
+    }
+
+    protected clearRecordingPreview(): void {
+        if (this.recordingPreview) {
+            this.node?.querySelector<HTMLAudioElement>('.goldie-microphone-check audio')?.pause();
+            URL.revokeObjectURL(this.recordingPreview);
+            this.recordingPreview = undefined;
+        }
+    }
+
+    protected async startMicrophoneCheck(): Promise<void> {
+        if (this.lessonState.busy || ['permission', 'recording', 'stopping'].includes(this.recorderState.status)) { return; }
+        const token = ++this.captureGeneration;
+        this.clearRecordingPreview();
+        if (['lesson', 'question'].includes(this.lessonState.view) && !await this.lessonController.prepareVoiceQuestion()) { return; }
+        if (this.isDisposed || token !== this.captureGeneration) { return; }
+        await this.recorder.start();
+    }
+
+    protected async finishMicrophoneCheck(): Promise<void> {
+        const token = this.captureGeneration;
+        const clip = await this.recorder.finish();
+        if (!clip || this.isDisposed || token !== this.captureGeneration) { return; }
+        this.clearRecordingPreview();
+        this.recordingPreview = URL.createObjectURL(clip.blob);
+        this.update();
+    }
+
+    protected renderMicrophoneCheck(): React.ReactNode {
+        const { status, error } = this.recorderState ?? { status: 'idle' };
+        const active = ['permission', 'recording', 'stopping', 'ready'].includes(status);
+        return <section className='goldie-microphone-check' aria-label='Microphone check'>
+            <h3>Microphone check</h3>
+            <p className='goldie-note'>Record locally to check your microphone. Question sending is waiting for the Stage 3 backend.</p>
+            <p role='status' aria-live='polite'>{status === 'permission' ? 'Waiting for microphone permission…'
+                : status === 'recording' ? 'Recording — stops at 30 seconds.' : status === 'stopping' ? 'Finishing recording…'
+                    : status === 'ready' ? 'Recording ready. Listen or discard.' : error ?? 'Microphone is off.'}</p>
+            {!active && <button className='theia-button secondary' disabled={this.lessonState.busy}
+                onClick={() => this.startMicrophoneCheck()}>Test microphone</button>}
+            {status === 'recording' && <button className='theia-button' onClick={() => this.finishMicrophoneCheck()}>Stop recording</button>}
+            {status === 'ready' && !this.recordingPreview && <button className='theia-button secondary'
+                onClick={() => this.finishMicrophoneCheck()}>Preview recording</button>}
+            {active && <button className='theia-button secondary' onClick={() => this.cancelCapture()}>Discard recording</button>}
+            {this.recordingPreview && <audio aria-label='Local microphone recording' controls src={this.recordingPreview} />}
+        </section>;
     }
 
     protected onActivateRequest(msg: Message): void {
@@ -490,6 +567,7 @@ export class GoldieWidget extends ReactWidget {
     }
 
     protected async closeGoldie(): Promise<void> {
+        this.cancelCapture();
         this.close();
         await this.shell.collapsePanel('right');
     }
@@ -543,6 +621,7 @@ export class GoldieWidget extends ReactWidget {
                 <button className={`goldie-header-action${this.detailsOpen ? ' active' : ''}`}
                     aria-label={this.detailsOpen ? 'Close Goldie details' : 'Open Goldie setup and details'}
                     title={this.detailsOpen ? 'Close details' : 'Setup and details'} onClick={() => {
+                        if (this.detailsOpen) { this.cancelCapture(); }
                         this.detailsOpen = !this.detailsOpen; this.update();
                     }}>
                     <span className={codicon(this.detailsOpen ? 'close' : 'settings-gear')} aria-hidden='true' />
@@ -583,6 +662,7 @@ export class GoldieWidget extends ReactWidget {
                 <div className='goldie-panel-body'>
                     {this.renderStatus()}
                     {this.renderError()}
+                    {this.renderMicrophoneCheck()}
                     {this.renderLessonView()}
                 </div>
             </aside>}

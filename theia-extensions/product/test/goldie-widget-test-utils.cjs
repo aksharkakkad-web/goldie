@@ -6,7 +6,7 @@ const { createRequire } = require('node:module');
 const { renderToStaticMarkup } = require('react-dom/server');
 
 // Execute the real widget with only its desktop host replaced. React rendering stays real.
-function renderWidget(state, { detailsOpen = false } = {}) {
+function renderWidget(state, { detailsOpen = false, recorderState = { status: 'idle' } } = {}) {
     const filename = path.join(__dirname, '../lib/browser/goldie/goldie-widget.js');
     const localRequire = createRequire(filename);
     const exports = {};
@@ -22,7 +22,7 @@ function renderWidget(state, { detailsOpen = false } = {}) {
     const widget = Object.create(exports.GoldieWidget.prototype);
     Object.assign(widget, {
         lessonState: state, connectionState: 'Connected', connectionDetail: 'Ready',
-        questionDraft: '', questionComposerOpen: false, detailsOpen,
+        questionDraft: '', questionComposerOpen: false, detailsOpen, recorderState,
         lessonController: { canChangeContext: true }
     });
     return renderToStaticMarkup(widget.render());

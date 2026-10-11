@@ -682,3 +682,10 @@
     .goldie-orb-control { transition: none; }
     .goldie-orb-halo { transition: none; }
 }
+
+/* Stage 3 memory-only microphone check, before backend contract integration. */
+.goldie-microphone-check { padding: 12px; border: 1px solid var(--theia-widget-border); border-radius: 8px; margin-bottom: 16px; }
+.goldie-microphone-check h3 { margin: 0 0 8px; }
+.goldie-microphone-check .theia-button { margin: 4px 6px 4px 0; }
+.goldie-microphone-check audio { display: block; width: 100%; margin-top: 8px; }
+.goldie-practice-view textarea { box-sizing: border-box; width: 100%; margin-top: 8px; color: var(--theia-input-foreground); background: var(--theia-input-background); border: 1px solid var(--theia-input-border); padding: 8px; }
