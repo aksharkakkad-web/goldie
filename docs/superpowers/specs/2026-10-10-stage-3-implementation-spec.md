@@ -1,5 +1,7 @@
 # Goldie Stage 3 — Rishit's implementation spec
 
+Integration update: Akshar's backend/shared contracts and Node/RPC methods are now included in the combined delivery candidate. `docs/stage3-integration.md` is authoritative for exact payloads, stable request IDs and final-phase practice: completion closes normally, and covered-phase practice remains available in closed sessions without reopening them. The inspection/checklist below records the earlier frontend-only checkpoint; voice sending and phase-practice wiring still need implementation.
+
 Updated from Rishit's supplied Akshar message. This replaces the earlier typed-Q&A/recap-check proposal. Approved to implement by Rishit's current request.
 
 ## Goal and ownership

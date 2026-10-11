@@ -116,7 +116,7 @@ describe('Stage 2 immutable lesson planning', () => {
         expect(provider.teachings[0].profile).to.deep.equal({ level: 'beginner', knownConcepts: ['queues'] });
         expect(provider.teachings[0].plan.phases).to.deep.equal(roadmap().phases);
         const disk = await readFile(join(directory, 'sessions.json'), 'utf8');
-        expect(JSON.parse(disk).version).to.equal(2);
+        expect(JSON.parse(disk).version).to.equal(3);
         expect(disk).to.contain(request.handoff);
         expect(disk).not.to.contain('REPLACEMENT-CONTEXT');
         expect(disk).not.to.contain('PRIVATE-UNKNOWN-KEY');
@@ -268,19 +268,11 @@ describe('Stage 2 immutable lesson planning', () => {
         expect(await readFile(join(directory, 'sessions.json'), 'utf8')).not.to.contain('CLOSED-EXPLANATION');
     });
 
-    it('answers general prepared questions for nonfixture phase IDs without team-specific claims', async () => {
+    it('never substitutes the old general FAQ when live conversational generation is not configured', async () => {
         const provider = new ControlledProvider();
         const service = await open(directory, provider);
         const session = await accept(service);
-        const answer = await service.ask({ sessionId: session.sessionId, phaseId: 'concept-1', question: 'what is an api', handoff: '' });
-        expect(answer.kind).to.equal('answer');
-        if (answer.kind !== 'answer') { throw new Error('Expected prepared answer'); }
-        expect(answer.answer).to.contain('contract');
-        expect(answer.answer.toLowerCase()).not.to.contain('team');
-        const unknown = await service.ask({ sessionId: session.sessionId, phaseId: 'concept-1', question: 'go deeper', handoff: '' });
-        if (unknown.kind !== 'answer') { throw new Error('Expected unsupported answer'); }
-        expect(unknown.answer).to.contain('prepared');
-        expect(unknown.resumePhaseId).to.equal('concept-1');
+        await expectError(service.ask({ sessionId: session.sessionId, phaseId: 'concept-1', question: 'what is an api', handoff: '' }), 'GEMINI_NOT_CONFIGURED');
         expect((await service.getSession(session.sessionId)).activePhaseId).to.equal('concept-1');
         expect(provider.teachings).to.have.length(0);
     });
@@ -302,7 +294,7 @@ describe('Stage 2 immutable lesson planning', () => {
         expect(await migrated.publishedText(session.sessionId, published.contentId)).to.equal(published.explanation);
         expect((await migrated.action(session.sessionId, { actionId: 'skip', action: 'skip', phaseId: 'frontend' })).activePhaseId).to.equal('backend');
         await migrated.action(session.sessionId, { actionId: 'pause', action: 'pause' });
-        expect(JSON.parse(await readFile(join(directory, 'sessions.json'), 'utf8')).version).to.equal(2);
+        expect(JSON.parse(await readFile(join(directory, 'sessions.json'), 'utf8')).version).to.equal(3);
         legacy.sessions[0].state.activePhaseId = 'frontend';
         const corrupt = JSON.stringify(legacy);
         await writeFile(join(directory, 'sessions.json'), corrupt);

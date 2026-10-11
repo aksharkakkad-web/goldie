@@ -102,6 +102,14 @@ Run `yarn test:stage1` and `yarn lint` before handoff. These do not spend credit
 Native playback and failure evidence, diagnostic fixture limits, and the separate
 packaged-Electron test prerequisite are in [the Stage 1 guide](docs/goldie-stage1.md).
 
+## Stage 3 backend setup
+
+Stage 3 adds conversational Gemini answers, optional text practice and local Whisper
+transcription. See `docs/stage3-integration.md` for explicit binary/model setup,
+server-only paths and exact Node/RPC payloads. Run `yarn test:stage3` for cumulative
+checks. The recording/practice renderer is Rishit's separate track; existing Stage 2
+typed UI is not proof of the Stage 3 voice-only gate. No microphone starts on restore.
+
 ## Integrated Stage 2
 
 Open the Goldie panel and choose **Load handoff** or run **Goldie: Load sample handoff**
@@ -216,17 +224,18 @@ The reviewed product specification is saved at `docs/Goldie_HackNC_PRD.md`.
 Stage 0 implements the Goldie connection panel, teaching backend, shared API contracts,
 and real ElevenLabs credential validation. The integrated Stage 1 desktop adds prepared
 web-app architecture lessons, local persistent session/progress state, Q&A, recap and
-real ElevenLabs playback/cache. The local Stage 2 candidate adds Gemini-driven
-roadmaps/teaching and explicit handoff/profile loading. Onboarding, conversational
-Gemini Q&A and live Codex handoffs remain future work.
+real ElevenLabs playback/cache. Stage 2 adds Gemini-driven roadmaps/teaching and
+explicit handoff/profile loading, merged in PR #3. Stage 3 backend work adds
+conversational answers, local transcription and practice; native integration remains
+a separate gate. Onboarding and live Codex handoffs remain future work.
 See `docs/stage1-api.md` for exact contracts and `docs/goldie-stage1.md` for the native
-workflow and verified integration status. Stage 1 was merged in PR #2; Stage 2
-delivery still requires approval and the human together-run checkpoint remains open.
+workflow and verified integration status. Stage 1 was merged in PR #2 and Stage 2
+in PR #3; the human together-run checkpoint remains open.
 
 
 ### Stage 3 development checkpoint
 
-Goldie setup/details now has a **Microphone check**: Test microphone → Stop recording → local preview → Discard. Capture stops after 30 seconds; cancel, window blur, panel/drawer closure and navigation discard it. Nothing is uploaded by this check. Use this to verify macOS capture while Akshar finishes voice/practice contracts. Ordinary voice Q&A and per-phase practice are not integrated yet; see `docs/superpowers/specs/2026-10-10-stage-3-implementation-spec.md`.
+Goldie setup/details now has a **Microphone check**: Test microphone → Stop recording → local preview → Discard. Capture stops after 30 seconds; cancel, window blur, panel/drawer closure and navigation discard it. Nothing is uploaded by this check. Backend voice/practice contracts and RPC methods are implemented; use `docs/stage3-integration.md` to wire them. Ordinary voice Q&A and per-phase practice are not integrated yet; see `docs/superpowers/specs/2026-10-10-stage-3-implementation-spec.md`. The existing check can capture before acceptance and End session does not cancel it: those lifecycle gaps must be fixed before the Stage 3 product gate.
 
 Fresh focused verification:
 

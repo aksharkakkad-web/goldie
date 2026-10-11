@@ -72,8 +72,8 @@ export async function runGeminiSmoke(app: FastifyInstance, config: BackendConfig
                 const answer = AskResponseSchema.parse(await post('/api/ask', {
                     sessionId: session.sessionId, phaseId: session.activePhaseId, question: 'What is an API?'
                 }));
-                if (answer.kind !== 'answer') { throw new Error('Expected the general prepared FAQ answer.'); }
-                for (const [label, contentId] of [['Gemini lesson', lesson.contentId], ['prepared FAQ answer', answer.contentId]]) {
+                if (answer.kind !== 'answer') { throw new Error('Expected a conversational Gemini answer.'); }
+                for (const [label, contentId] of [['Gemini lesson', lesson.contentId], ['Gemini answer', answer.contentId]]) {
                     const speech = SpeechResponseSchema.parse(await post('/api/speech', { sessionId: session.sessionId, contentId }));
                     const audio = await app.inject({ method: 'GET', url: speech.audioUrl });
                     if (audio.statusCode !== 200 || !isMp3(audio.rawPayload)) { throw new Error('Dynamic speech smoke returned invalid MP3.'); }

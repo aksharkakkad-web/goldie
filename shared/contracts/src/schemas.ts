@@ -111,6 +111,7 @@ export const TeachResponseSchema = z.object({
 
 export const AskRequestSchema = z.object({
     sessionId: IdentifierSchema,
+    requestId: IdentifierSchema.optional(),
     phaseId: IdentifierSchema,
     question: z.string().trim().min(1).max(1000),
     handoff: HandoffSchema,
@@ -161,6 +162,32 @@ export const SpeechResponseSchema = z.object({
 export const ApiErrorResponseSchema = z.object({
     error: z.object({ code: z.string().min(1), message: z.string().min(1), retryable: z.boolean() }).strict()
 }).strict();
+
+export const PracticeQuestionsSchema = z.array(z.object({
+    id: IdentifierSchema,
+    question: z.string().trim().min(1).max(1000),
+    modelAnswer: z.string().trim().min(1).max(2000)
+}).strict()).min(3).max(5).superRefine((questions, ctx) => {
+    if (new Set(questions.map(q => q.id)).size !== questions.length
+        || new Set(questions.map(q => q.question.toLowerCase().replace(/\s+/g, ' ').trim())).size !== questions.length) {
+        ctx.addIssue({ code: 'custom', message: 'Practice questions must be distinct.' });
+    }
+});
+export const PracticeBatchSchema = z.object({
+    practiceId: IdentifierSchema, phaseId: IdentifierSchema, questions: PracticeQuestionsSchema
+}).strict();
+export const PracticeResponseSchema = PracticeBatchSchema.nullable();
+export const PracticeGenerateRequestSchema = z.object({}).strict();
+
+export const TranscribeRequestSchema = z.object({
+    sessionId: IdentifierSchema, phaseId: IdentifierSchema, requestId: IdentifierSchema,
+    mimeType: z.literal('audio/webm'),
+    dataBase64: z.string().min(8).max(2796204)
+}).strict();
+export const TranscribeResponseSchema = z.object({ text: z.string().trim().min(1).max(1000) }).strict();
+export type PracticeBatch = z.infer<typeof PracticeBatchSchema>;
+export type TranscribeRequest = z.infer<typeof TranscribeRequestSchema>;
+export type TranscribeResponse = z.infer<typeof TranscribeResponseSchema>;
 
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 export type OfferRequest = z.infer<typeof OfferRequestSchema>;

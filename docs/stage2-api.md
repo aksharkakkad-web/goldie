@@ -1,6 +1,7 @@
 # Stage 2 — integrated Gemini teaching and Theia contract
 
-This is the authoritative integration guide for both tracks. Rishit's manual
+This is the Stage 2 integration guide for both tracks. The [Stage 3 contract](stage3-integration.md)
+supersedes prepared live-session FAQ, Q&A deadline and storage-version details in the Stage 3 candidate. Rishit's manual
 Markdown context/profile UI and Akshar's backend provide real Gemini offer
 decisions, adaptive roadmaps and lazy spoken explanations behind the same HTTP
 contracts. The product remains native Theia Electron only. Stage 1 remains available only
