@@ -1,12 +1,111 @@
+<div align="center">
+
+<img src="theia-extensions/product/src/browser/icons/goldie/icon-dark.png" alt="Goldie logo" width="64" />
+
 # Goldie
 
-HackNC engineering mentor built on Eclipse Theia IDE. Goldie teaches architecture through opt-in roadmaps, Gemini-generated lessons, real ElevenLabs speech, pause/resume, typed prepared FAQs, saved progress and truthful recaps. Stage 2 uses an explicitly loaded Markdown handoff and beginner/intermediate profile; live Codex handoffs and freeform Q&A come later. It runs in native Theia Electron, not Cursor or VS Code. The integrated local candidate still requires the joint merged-main checkpoint before overall Stage 2 sign-off.
+**Build fast. Understand what you build.**
 
-## Start development
+An AI-native IDE with a voice mentor that teaches you the engineering behind your app while your coding agent keeps building.
 
-Use Node 24.21.0 and Yarn Classic 1.22.22. From the repository root:
+[**Try the demo**](https://goldie-judge-demo.vercel.app/) &nbsp; | &nbsp; [How Goldie works](#how-goldie-works) &nbsp; | &nbsp; [Run locally](#run-locally)
+
+Built at [HackNC 2026](https://hacknc-2026.devpost.com/) by Rishit and Akshar.
+
+</div>
+
+![Goldie desktop IDE with project code on the left and the voice mentor on the right](docs/stage4-proof/native-speaking-orb.png)
+
+## Why Goldie?
+
+AI can build an app faster than you can understand it. Learning what happened usually means leaving your project to read documentation or watch tutorials.
+
+Goldie brings that learning into your IDE. It uses your agent's engineering plan and your experience level to explain the concepts behind the build. It's for students, first-time builders, and developers learning a new stack with AI.
+
+## Try the demo
+
+**[Open Goldie in your browser →](https://goldie-judge-demo.vercel.app/)**
+
+No download or account needed. Click **Begin sample build**, then follow the prompts to start a lesson, ask a question, and try optional practice.
+
+The website replays a sample coding task. Live teaching needs the demo backend online; if it says **Backend unavailable**, the coding replay still works. To run Codex on your own project, use the desktop setup below.
+
+## How Goldie works
+
+1. **Build.** Ask Codex for a feature. It writes code and keeps a handoff of its plan and decisions.
+2. **Choose to learn.** Goldie offers a learning path based on that handoff. Audio starts only when you accept.
+3. **Listen.** Hear explanations suited to your level. Pause, replay, or skip a section.
+4. **Ask.** Record and send a question, hear the answer, then return to your original lesson position.
+5. **Practice.** Write your reasoning and compare it with a model answer. Practice is optional and has no score.
+
+For a login feature, that might mean understanding the difference between being signed in and having permission to access someone else's data. The lesson follows what you're building while your agent continues working.
+
+<details>
+<summary>More screenshots: learning path and practice</summary>
+
+**Learning path.** Goldie offers relevant topics before starting any audio.
+
+![Goldie learning offer with Explain this build and Not now choices](docs/stage4-proof/e2e-native-auto-offer.png)
+
+**Optional practice.** Explain the idea in your own words, then reveal the model answer.
+
+![Goldie practice with a written response and revealed model answer](docs/stage4-proof/e2e-native-gold-practice.png)
+
+</details>
+
+## The technology
+
+| Technology | Role in Goldie |
+| --- | --- |
+| Eclipse Theia + Electron | Desktop IDE, editor, and mentor panel. |
+| Codex | Builds your app and writes `.goldie/HANDOFF.md` with engineering context. |
+| Gemini API | Plans lessons for your level, explains concepts, answers questions, and generates practice. |
+| ElevenLabs API | Speaks generated lessons and answers. |
+| whisper.cpp | Transcribes microphone questions locally. |
+
+Our custom work connects the coding agent to the mentor: handoff tracking, the voice interface and reactive orb, lesson playback, question-and-return behavior, practice, and the teaching backend.
+
+<details>
+<summary>Engineering details and verification</summary>
+
+- **Stable lessons:** an accepted lesson keeps its original handoff revision even as Codex updates the project. [Lesson backend](backend/src/lessons.ts)
+- **Reliable return:** lesson and answer audio are separate, so asking a question preserves the lesson's clip and position. Cancelled requests cannot replace the active conversation. [Lesson controller](theia-extensions/product/src/browser/goldie/goldie-lesson-controller.ts)
+- **Bounded context:** the handoff reader limits input size, checks file identity, rejects symlink substitution, and checks for credential patterns. [Handoff reader](theia-extensions/product/src/node/goldie-workspace-handoff.ts)
+
+The [recorded desktop verification](docs/stage4-proof/E2E_REPORT.md) documents native Codex builds, automatic learning offers, real Gemini/ElevenLabs output, human voice questions, lesson return, and practice. It records 308 passing checks, lint, and an Electron build, alongside an initial recognition failure and remaining rehearsal checks.
+
+Provider keys stay in the backend. Handoff context and question text go to Gemini; speech text goes to ElevenLabs. Microphone recordings are transcribed locally and are not retained.
+
+Developer references: [setup](DEV_SETUP.md) · [product requirements](docs/Goldie_HackNC_PRD.md) · [desktop walkthrough](docs/JUDGE_DEMO.md) · [voice contracts](docs/stage3-integration.md).
 
 ```sh
+yarn test:stage4
+yarn lint
+yarn electron build
+```
+
+These are local checks. Real-provider smoke commands use provider credits.
+
+</details>
+
+## Current status
+
+Goldie is a hackathon prototype. The desktop supports live coding and voice teaching; the website uses a prepared coding replay. Questions use click-to-record and click-to-send. Answers explain concepts using the handoff, rather than citing your source files.
+
+Next: answers grounded in actual code, spoken interruption, and user testing to measure whether Goldie helps builders explain and debug their projects. Final live browser rehearsal and desktop recording checks remain open in the verification notes.
+
+## Run locally
+
+Use **Node 24.21.0** and **Yarn Classic 1.22.22**. You'll need a configured Codex account, Gemini and ElevenLabs API keys, and local transcription tools for spoken questions. Provider usage may incur charges. See [development setup](DEV_SETUP.md) for native build prerequisites.
+
+<details>
+<summary>Show installation steps</summary>
+
+### 1. Get the code and build
+
+```sh
+git clone https://github.com/aksharkakkad-web/goldie.git
+cd goldie
 nvm install
 nvm use
 npm install --global yarn@1.22.22
@@ -15,47 +114,47 @@ yarn build:dev
 yarn download:plugins
 ```
 
-Then run `yarn electron watch` in one terminal and `yarn electron start .` in another. Reload the IDE window after the watcher finishes rebuilding.
+### 2. Configure the teaching backend
 
-### Goldie backend
+Create `backend/.env` from `backend/.env.example` if it does not already exist. Add `GEMINI_API_KEY` and `ELEVENLABS_API_KEY` there. Keep this file private.
+
+For spoken questions, follow the [local transcription setup](docs/stage3-integration.md#local-transcription-setup-explicit-no-runtime-install) to configure whisper.cpp, its English model, and FFmpeg. Those tools are required in addition to the provider keys.
+
+### 3. Start the backend and IDE
+
+Run each block in a separate terminal from the repository root.
 
 ```sh
-cp backend/.env.example backend/.env
-# Add GEMINI_API_KEY and ELEVENLABS_API_KEY to backend/.env; never commit this file.
+# Terminal 1: teaching backend
 yarn backend:build
-yarn backend:test
 yarn backend:start
 ```
 
-The local service listens at `http://127.0.0.1:8787` by default. Verify it with
-`curl http://127.0.0.1:8787/health`, then run `yarn backend:smoke:elevenlabs`.
+```sh
+# Terminal 2: rebuild desktop changes
+yarn electron watch
+```
 
-Start the desktop with `yarn electron start .`; the Goldie panel opens on the right
-and shows **Connected** when the backend is running. Run `yarn test:stage0` for the
-backend, shared contracts, panel transport, and real client/server regression checks.
-See [panel setup and the Stage 0 verification workflow](docs/goldie-panel.md).
+```sh
+# Terminal 3: launch the desktop
+yarn electron start .
+```
 
-Run `yarn test:stage1` for cumulative backend/contracts/transport/controller checks. The
-opt-in `yarn backend:smoke:speech --play` generates and plays a real lesson and
-answer using existing credits (or cached audio); stop the normal backend first.
-See [Stage 1 API contracts](docs/stage1-api.md) and the
-[connected desktop workflow and verification evidence](docs/goldie-stage1.md).
+Open your project in Goldie and configure Codex in the IDE's AI settings. Open **Goldie: Setup and lesson details** in the command palette, choose your level, and click **Connect this project**. Ask Codex for a feature. When it writes the engineering handoff, Goldie can offer a lesson.
 
-For Stage 2, use **Load handoff** to choose one file from `docs/stage2-samples/`,
-select Beginner/Intermediate, then **Prepare lesson → Explain this build**.
-Loading alone never starts generation or audio. Add keys to the existing `.env`
-without overwriting it. Run `yarn test:stage2` for cumulative provider-mocked checks.
-The explicit `yarn backend:smoke:gemini --play` uses real Gemini and existing
-ElevenLabs credits; it never runs automatically. See
-[Stage 2 contracts, privacy and recovery](docs/stage2-api.md) and
-[integrated verification and remaining gates](docs/stage2-alignment-verification.md).
+For a repeatable walkthrough, use the included [Team Tasks example](examples/goldie-team-tasks/README.md). See [development setup](DEV_SETUP.md) for reload instructions and troubleshooting.
 
-- [Development setup and troubleshooting](DEV_SETUP.md)
-- [Updated Goldie PRD and responsibilities](docs/Goldie_HackNC_PRD.md)
+</details>
 
-The original Theia README, license, notices, and Git history are retained below.
+## Team and credits
 
----
+- **Rishit:** IDE integration, voice interface, and project-context flow.
+- **Akshar:** teaching backend and provider integrations.
+
+Goldie builds on [Eclipse Theia](https://github.com/eclipse-theia/theia) and [Theia IDE](https://github.com/eclipse-theia/theia-ide), with Codex, Gemini, ElevenLabs, and whisper.cpp. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
+
+<details>
+<summary>Original Eclipse Theia IDE README</summary>
 
 <br/>
 <div id="theia-logo" align="center">
@@ -218,3 +317,5 @@ docker run -p=3000:3000 --rm theia-ide
 ```
 
 Then connect to <http://localhost:3000/>.
+
+</details>
