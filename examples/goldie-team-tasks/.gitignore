@@ -1,0 +1,9 @@
+node_modules
+.next/
+data/
+.env*
+.goldie-dev/
+
+# Source in this standalone demo overrides the IDE generated-lib ignore.
+!lib/
+!lib/**

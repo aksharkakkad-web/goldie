@@ -5,11 +5,58 @@ const http = require('node:http');
 const { createGoldieApi } = require('../lib/node/goldie-api');
 const { RpcProxyFactory } = require('@theia/core/lib/common/messaging/proxy-factory');
 
+test('Stage 3 voice and practice cross the local RPC boundary with separate deadlines and no student upload', async () => {
+    const batch = { practiceId: 'batch', phaseId: 'p', questions: [1, 2, 3].map(n => ({ id: `q${n}`, question: `Why ${n}?`, modelAnswer: `Because ${n}` })) };
+    const calls = [];
+    await withServer((req, res) => {
+        let body = ''; req.on('data', data => body += data);
+        req.on('end', () => {
+            calls.push({ url: req.url, body });
+            setTimeout(() => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(
+                req.url === '/api/transcribe' ? { text: 'Why?' } : req.url === '/api/ask'
+                    ? { kind: 'answer', answer: 'Because', resumePhaseId: 'p', contentId: 'c' } : batch)); }, req.method === 'GET' ? 0 : 50);
+        });
+    }, async address => {
+        const api = createGoldieApi(address, { timeoutMs: 10, teachingTimeoutMs: 200, transcriptionTimeoutMs: 200 });
+        const request = { sessionId: 's', phaseId: 'p', requestId: 'intent', mimeType: 'audio/webm', dataBase64: Buffer.alloc(80000, 1).toString('base64') };
+        assert.deepEqual(await api.transcribe(request), { text: 'Why?' });
+        assert.equal((await api.ask({ sessionId: 's', phaseId: 'p', requestId: 'intent', question: 'Why?' })).answer, 'Because');
+        assert.deepEqual(await api.generatePractice('s', 'p'), batch);
+        assert.deepEqual(await api.getPractice('s', 'p'), batch);
+        assert.equal(calls[0].body.length > 64000, true);
+        assert.equal(calls[2].body, '{}');
+        assert.equal(calls[3].body, '');
+        assert.equal(calls[2].url, '/api/sessions/s/phases/p/practice');
+    });
+});
+
+test('Stage 3 errors preserve safe retryability through the real RPC codec', async () => {
+    for (const [code, retryable] of [['REQUEST_CONFLICT', false], ['QUESTION_BUSY', true], ['QUESTION_STALE', true],
+        ['PRACTICE_NOT_AVAILABLE', false], ['EXPLANATION_REQUIRED', false], ['TRANSCRIPTION_NOT_CONFIGURED', false],
+        ['TRANSCRIPTION_EMPTY', false], ['TRANSCRIPTION_TOO_LONG', false], ['TRANSCRIPTION_FAILED', true],
+        ['TRANSCRIPTION_TIMEOUT', true], ['TRANSCRIPTION_BUSY', true], ['TRANSCRIPTION_STALE', true],
+        ['RECORDING_TOO_LONG', false], ['INVALID_RECORDING', false]]) {
+        await withServer((_req, res) => {
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: { code, retryable, message: 'PRIVATE transcript /Users/private' } }));
+        }, async address => {
+            await assert.rejects(createGoldieApi(address).ask({ sessionId: 's', phaseId: 'p', question: 'Why?' }), error => {
+                const codec = new RpcProxyFactory();
+                const restored = codec.deserializeError(new Error('captured'), codec.serializeError(error));
+                assert.equal(restored.data.apiCode, code);
+                assert.equal(restored.code, retryable ? -32002 : -32001);
+                assert.doesNotMatch(JSON.stringify(restored.toJson()), /PRIVATE|\/Users\/private/);
+                return true;
+            });
+        });
+    }
+});
+
 test('safe backend error semantics survive the actual Theia RPC error codec without leaking response messages', async () => {
     for (const [code, retryable, pattern] of [
         ['SPEECH_NOT_CONFIGURED', false, /configure.*backend/i],
         ['SPEECH_AUTH_FAILED', false, /credentials.*backend/i],
-        ['SPEECH_TIMEOUT', true, /timed out/i],
+        ['SPEECH_TIMEOUT', true, /timed out/i], ['SPEECH_QUOTA', true, /credits/i],
         ['SPEECH_UNAVAILABLE', false, /unavailable/i]
     ]) {
         await withServer((_req, res) => {

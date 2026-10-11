@@ -44,7 +44,9 @@
     "backend:smoke:speech": "yarn workspace @goldie/backend smoke:speech",
     "test:stage1": "yarn test:stage0",
     "test:stage2": "yarn test:stage1",
+    "test:stage3": "yarn test:stage2",
     "backend:smoke:gemini": "yarn workspace @goldie/backend smoke:gemini",
+    "backend:smoke:stage3": "yarn workspace @goldie/backend smoke:stage3",
     "clean": "lerna run clean && rimraf node_modules",
     "build": "yarn build:extensions && yarn build:applications",
     "build:dev": "yarn build:extensions && yarn build:applications:dev",
@@ -74,7 +76,8 @@
     "license:check:fetch-jar": "node scripts/fetch-dash-licenses-jar.js",
     "license:check": "yarn license:check:fetch-jar && npx dash-licenses-wrapper  --configFile=./configs/license-check-config.json",
     "license:check:review": "yarn license:check:fetch-jar && npx dash-licenses-wrapper  --configFile=./configs/license-check-config.json --review",
-    "postinstall": "theia-patch"
+    "postinstall": "theia-patch",
+    "test:stage4": "yarn test:stage3"
   },
   "theiaPluginsDir": "plugins",
   "theiaPlugins": {
@@ -110,6 +113,7 @@
     "**/tar": "^7.5.22",
     "**/uuid": "^11.1.1",
     "**/mocha": "^11.0.0",
-    "lerna/js-yaml": "^4.3.1"
+    "lerna/js-yaml": "^4.3.1",
+    "@openai/codex-sdk": "0.162.1"
   }
 }

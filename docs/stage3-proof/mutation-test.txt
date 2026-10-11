@@ -1,0 +1,51 @@
+✔ Send waits for final chunk, releases mic immediately and repeated clicks share one result (0.659375ms)
+✔ 30 seconds stops and waits ready without sending or restarting (0.100542ms)
+✖ cancel during OS permission stops late tracks without starting capture (0.34625ms)
+✖ cancel while stopping discards the clip and ignores late recorder callbacks (0.321958ms)
+✔ denied permission uses safe text and never echoes OS details (0.127208ms)
+✔ runtime errors, empty recordings and excessive bytes release tracks (0.645375ms)
+✔ blur, pagehide, hidden document and disposal clean up lifecycle listeners and pending permission (0.385166ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 5
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 43.944084
+
+✖ failing tests:
+
+test at theia-extensions/product/test/goldie-recorder.test.cjs:38:1
+✖ cancel during OS permission stops late tracks without starting capture (0.34625ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  0 !== 1
+
+      at TestContext.<anonymous> (/Users/rishits/Documents/ChatGPT/hacknc/buildsense/theia-extensions/product/test/goldie-recorder.test.cjs:41:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at theia-extensions/product/test/goldie-recorder.test.cjs:43:1
+✖ cancel while stopping discards the clip and ignores late recorder callbacks (0.321958ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  'error' !== 'idle'
+
+      at TestContext.<anonymous> (/Users/rishits/Documents/ChatGPT/hacknc/buildsense/theia-extensions/product/test/goldie-recorder.test.cjs:46:52)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'error',
+    expected: 'idle',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

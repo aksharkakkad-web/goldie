@@ -5,18 +5,34 @@ import {
     OfferRequestSchema, OfferResponseSchema, SessionRequestSchema, SessionResponseSchema,
     TeachRequestSchema, TeachResponseSchema, AskRequestSchema, AskResponseSchema,
     CompleteRequestSchema, CompleteResponseSchema, SpeechRequestSchema, SpeechResponseSchema,
-    IdentifierSchema, SessionActionRequestSchema, ApiErrorResponseSchema
+    IdentifierSchema, SessionActionRequestSchema, ApiErrorResponseSchema,
+    PracticeBatchSchema, PracticeResponseSchema, PracticeGenerateRequestSchema, TranscribeRequestSchema, TranscribeResponseSchema
 } from '@goldie/contracts';
 import { ApplicationError } from '@theia/core/lib/common/application-error';
 import { GOLDIE_NONRETRYABLE_ERROR_CODE, GOLDIE_RETRYABLE_ERROR_CODE, GoldieService, GoldieSpeech } from '../common/goldie-service';
 import { checkGoldieHealth } from './goldie-health';
 import { loadGoldieHandoff } from './goldie-context';
+import { inspectGoldieWorkspaceHandoff } from './goldie-workspace-handoff';
 
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
 const INVALID_RESPONSE = 'The teaching service returned an invalid response. Try again.';
 // Never forward provider/body messages, even when the API error shape is valid.
 const SAFE_ERRORS: Readonly<Record<string, string>> = {
+    REQUEST_CONFLICT: 'This request ID belongs to different content. Start a new question.',
+    QUESTION_BUSY: 'Goldie is answering another question. Wait or retry manually.',
+    QUESTION_STALE: 'The lesson changed while answering. Ask again or resume the current phase.',
+    EXPLANATION_REQUIRED: 'Load the phase explanation before asking or practicing.',
+    PRACTICE_NOT_AVAILABLE: 'Practice is available for covered phases only, not skipped or self-reported familiar phases.',
+    TRANSCRIPTION_NOT_CONFIGURED: 'Configure local Whisper, base.en and FFmpeg in the backend, then re-record or resume.',
+    INVALID_RECORDING: 'Record valid WebM audio of at most 2 MiB, then send again.',
+    RECORDING_TOO_LONG: 'Recordings are limited to 30 seconds. Re-record a shorter question.',
+    TRANSCRIPTION_EMPTY: 'No speech was recognized. Re-record or resume the lesson.',
+    TRANSCRIPTION_TOO_LONG: 'The transcript was too long. Re-record a shorter question.',
+    TRANSCRIPTION_FAILED: 'Local transcription failed. Re-record, retry manually or resume.',
+    TRANSCRIPTION_TIMEOUT: 'Local transcription timed out. Re-record a shorter question or resume.',
+    TRANSCRIPTION_BUSY: 'Local transcription is busy. Retry manually when it finishes.',
+    TRANSCRIPTION_STALE: 'The lesson changed during transcription. Re-record or resume.',
     GEMINI_NOT_CONFIGURED: 'Teaching is not configured. Configure Gemini in the backend, then try again.',
     GEMINI_AUTH_FAILED: 'Teaching credentials were rejected. Correct Gemini credentials in the backend, then try again.',
     GEMINI_QUOTA: 'Teaching quota is unavailable. Retry manually later.',
@@ -29,6 +45,7 @@ const SAFE_ERRORS: Readonly<Record<string, string>> = {
     CONTEXT_CONFLICT: 'The handoff changed after this offer. Load the current context and prepare a new lesson.',
     SPEECH_NOT_CONFIGURED: 'Speech is not configured. Configure credentials in the backend; text is still available.',
     SPEECH_AUTH_FAILED: 'Speech credentials were rejected. Correct credentials in the backend; text is still available.',
+    SPEECH_QUOTA: 'Speech credits are unavailable. Text is still available; retry manually after credits are restored.',
     SPEECH_UNAVAILABLE: 'Speech is unavailable. Text is still available.',
     SPEECH_TIMEOUT: 'Speech generation timed out. Text is still available.',
     SPEECH_BUSY: 'Speech is busy. Text is still available; retry when playback is idle.',
@@ -57,6 +74,7 @@ export interface GoldieApiOptions {
     timeoutMs?: number;
     speechTimeoutMs?: number;
     teachingTimeoutMs?: number;
+    transcriptionTimeoutMs?: number;
 }
 
 function deadline(value: number | undefined, fallback: number): number {
@@ -82,8 +100,10 @@ export function createGoldieApi(address: string, options: GoldieApiOptions = {})
     const timeout = deadline(options.timeoutMs, 15000);
     const speechTimeout = deadline(options.speechTimeoutMs, 30000);
     const teachingTimeout = deadline(options.teachingTimeoutMs, 30000);
+    const transcriptionTimeout = deadline(options.transcriptionTimeoutMs, 40000);
 
-    async function request<T>(path: string, input: unknown, schema: Schema<T> | undefined, audio: boolean, timeoutMs = timeout): Promise<{ body: Buffer; mimeType: string }> {
+    async function request<T>(path: string, input: unknown, schema: Schema<T> | undefined, audio: boolean,
+        timeoutMs = timeout, maxRequestBytes = 64 * 1024): Promise<{ body: Buffer; mimeType: string }> {
         const endpoint = localEndpoint(address, path);
         let body: string | undefined;
         try {
@@ -91,7 +111,7 @@ export function createGoldieApi(address: string, options: GoldieApiOptions = {})
                 const parsed = schema.safeParse(input);
                 if (!parsed.success) { throw new Error(); }
                 body = JSON.stringify(parsed.data);
-                if (Buffer.byteLength(body) > 64 * 1024) { throw new Error(); }
+                if (Buffer.byteLength(body) > maxRequestBytes) { throw new Error(); }
             }
         } catch {
             throw new Error('The lesson request is invalid or too large.');
@@ -174,8 +194,9 @@ export function createGoldieApi(address: string, options: GoldieApiOptions = {})
         });
     }
 
-    async function json<I, O>(path: string, input: I, requestSchema: Schema<I> | undefined, responseSchema: Schema<O>, timeoutMs = timeout): Promise<O> {
-        const response = await request(path, input, requestSchema, false, timeoutMs);
+    async function json<I, O>(path: string, input: I, requestSchema: Schema<I> | undefined, responseSchema: Schema<O>,
+        timeoutMs = timeout, maxRequestBytes = 64 * 1024): Promise<O> {
+        const response = await request(path, input, requestSchema, false, timeoutMs, maxRequestBytes);
         try {
             const parsed = responseSchema.safeParse(JSON.parse(response.body.toString('utf8')));
             if (parsed.success) { return parsed.data; }
@@ -187,6 +208,12 @@ export function createGoldieApi(address: string, options: GoldieApiOptions = {})
         const parsed = IdentifierSchema.safeParse(sessionId);
         if (!parsed.success) { throw new Error('The lesson request is invalid or too large.'); }
         return `/api/sessions/${encodeURIComponent(parsed.data)}`;
+    }
+
+    function practicePath(sessionId: string, phaseId: string): string {
+        const parsed = IdentifierSchema.safeParse(phaseId);
+        if (!parsed.success) { throw new Error('The practice phase is invalid.'); }
+        return `${sessionPath(sessionId)}/phases/${encodeURIComponent(parsed.data)}/practice`;
     }
 
     function validSession<T extends { phases: { id: string }[]; activePhaseId?: string; status: string;
@@ -209,6 +236,7 @@ export function createGoldieApi(address: string, options: GoldieApiOptions = {})
 
     return {
         loadHandoff: loadGoldieHandoff,
+        inspectWorkspaceHandoff: inspectGoldieWorkspaceHandoff,
         checkHealth: () => checkGoldieHealth(address),
         offer: async input => {
             const offer = await json('/api/offer', input, OfferRequestSchema, OfferResponseSchema, teachingTimeout);
@@ -223,7 +251,10 @@ export function createGoldieApi(address: string, options: GoldieApiOptions = {})
         getSession: async sessionId => validSession(await json(sessionPath(sessionId), undefined, undefined, SessionResponseSchema)),
         action: async (sessionId, input) => validSession(await json(`${sessionPath(sessionId)}/actions`, input, SessionActionRequestSchema, SessionResponseSchema)),
         teach: input => json('/api/teach', input, TeachRequestSchema, TeachResponseSchema, teachingTimeout),
-        ask: input => json('/api/ask', input, AskRequestSchema, AskResponseSchema),
+        ask: input => json('/api/ask', input, AskRequestSchema, AskResponseSchema, teachingTimeout),
+        transcribe: input => json('/api/transcribe', input, TranscribeRequestSchema, TranscribeResponseSchema, transcriptionTimeout, 3 * 1024 * 1024),
+        getPractice: (sessionId, phaseId) => json(practicePath(sessionId, phaseId), undefined, undefined, PracticeResponseSchema),
+        generatePractice: (sessionId, phaseId) => json(practicePath(sessionId, phaseId), {}, PracticeGenerateRequestSchema, PracticeBatchSchema, teachingTimeout),
         complete: input => json('/api/complete', input, CompleteRequestSchema, CompleteResponseSchema),
         speech: async input => {
             const metadata = await json('/api/speech', input, SpeechRequestSchema, SpeechResponseSchema, speechTimeout);

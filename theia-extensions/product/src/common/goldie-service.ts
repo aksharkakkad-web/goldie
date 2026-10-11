@@ -9,7 +9,8 @@
 
 import type {
     OfferRequest, OfferResponse, SessionRequest, SessionResponse, TeachRequest, TeachResponse,
-    AskRequest, AskResponse, CompleteRequest, CompleteResponse, SpeechRequest, SessionActionRequest
+    AskRequest, AskResponse, CompleteRequest, CompleteResponse, SpeechRequest, SessionActionRequest,
+    PracticeBatch, TranscribeRequest, TranscribeResponse
 } from '@goldie/contracts';
 
 export const GoldieService = Symbol('GoldieService');
@@ -33,10 +34,21 @@ export interface GoldieHandoff {
     name: string;
 }
 
+export interface GoldieWorkspaceHandoff {
+    projectId: string;
+    name: string;
+    kind: 'missing' | 'ready';
+    revision?: number;
+    handoff?: string;
+    fingerprint?: string;
+}
+
 /** Local IDE transport only. Teaching and provider keys belong to the teaching backend. */
 export interface GoldieService {
     /** Explicit local Markdown selection only; never sends the file to a provider. */
     loadHandoff(uri: string): Promise<GoldieHandoff>;
+    /** Inspect only the canonical handoff inside a local workspace; never contacts HTTP. */
+    inspectWorkspaceHandoff(rootUri: string): Promise<GoldieWorkspaceHandoff>;
     checkHealth(): Promise<GoldieHealth>;
     offer(request: OfferRequest): Promise<OfferResponse>;
     startSession(request: SessionRequest): Promise<SessionResponse>;
@@ -44,6 +56,9 @@ export interface GoldieService {
     action(sessionId: string, request: SessionActionRequest): Promise<SessionResponse>;
     teach(request: TeachRequest): Promise<TeachResponse>;
     ask(request: AskRequest): Promise<AskResponse>;
+    transcribe(request: TranscribeRequest): Promise<TranscribeResponse>;
+    getPractice(sessionId: string, phaseId: string): Promise<PracticeBatch | null>;
+    generatePractice(sessionId: string, phaseId: string): Promise<PracticeBatch>;
     complete(request: CompleteRequest): Promise<CompleteResponse>;
     speech(request: SpeechRequest): Promise<GoldieSpeech>;
 }

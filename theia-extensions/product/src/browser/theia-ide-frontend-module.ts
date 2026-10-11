@@ -28,8 +28,22 @@ import { TheiaIDEAIRegistryConfiguration } from './theia-ide-ai-registry-configu
 import { TheiaIDEContribution } from './theia-ide-contribution';
 import { TheiaIDEGettingStartedWidget } from './theia-ide-getting-started-widget';
 
+import { PreferenceContribution } from '@theia/core/lib/common/preferences';
+import { MessageService } from '@theia/core/lib/common/message-service';
+import URI from '@theia/core/lib/common/uri';
+import { FileService } from '@theia/filesystem/lib/browser/file-service';
+import { WorkspaceService } from '@theia/workspace/lib/browser/workspace-service';
+import { CodexFrontendService } from '@theia/ai-codex/lib/browser/codex-frontend-service';
+import { GoldieCodexFrontendService } from './goldie/goldie-codex-frontend-service';
+import { GoldieWorkspaceConnection } from './goldie/goldie-workspace-connection';
+import { GoldieLessonController } from './goldie/goldie-lesson-controller';
+
 export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     applyBranding();
+    bind(PreferenceContribution).toConstantValue({ schema: { type: 'object', properties: {
+        'goldie.codexModel': { type: 'string', default: '',
+            description: 'Optional Codex model for connected Goldie projects. Choose a model available to your signed-in account.' }
+    } } });
 
     bind(GoldieMidnightTheme).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(GoldieMidnightTheme);
@@ -37,6 +51,42 @@ export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     bind(GoldieService).toDynamicValue(context =>
         ServiceConnectionProvider.createLocalProxy<GoldieService>(context.container, GOLDIE_SERVICE_PATH)
     ).inSingletonScope();
+    bind(GoldieWorkspaceConnection).toDynamicValue(context => {
+        const service = context.container.get<GoldieService>(GoldieService);
+        const workspace = context.container.get<WorkspaceService>(WorkspaceService);
+        const files = context.container.get<FileService>(FileService);
+        const messages = context.container.get<MessageService>(MessageService);
+        const lesson = new GoldieLessonController(service);
+        let storage: Storage | undefined;
+        try { storage = globalThis.localStorage; } catch { /* Connection reports unavailable storage. */ }
+        return new GoldieWorkspaceConnection(service, lesson, {
+            onOffer: (offerId, topics) => {
+                messages.info(`Want to understand the engineering behind this? ${topics.join(', ')}`, 'View lesson', 'Not now').then(action => {
+                    if (lesson.state.view !== 'offer' || lesson.state.offer?.offerId !== offerId) { return; }
+                    if (action === 'View lesson') {
+                        context.container.get<GoldieViewContribution>(GoldieViewContribution).openView({ activate: true });
+                    } else if (action === 'Not now') { lesson.declineOffer(); }
+                });
+            },
+            roots: async () => (await workspace.roots).map(root => root.resource.toString()),
+            onRootsChanged: callback => {
+                const listener = workspace.onWorkspaceChanged(callback); return () => listener.dispose();
+            },
+            watch: (rootUri, callback) => {
+                const root = new URI(rootUri);
+                const canonical = root.resolve('.goldie/HANDOFF.md');
+                const watcher = files.watch(root, { recursive: true, excludes: ['**/node_modules/**', '**/.git/**', '**/.next/**'] });
+                const listener = files.onDidFilesChange(event => {
+                    if (event.contains(canonical) || event.contains(root.resolve('.goldie'))) { callback(); }
+                });
+                return () => { listener.dispose(); watcher.dispose(); };
+            },
+            storage,
+            schedule: (callback, ms) => setTimeout(callback, ms), clear: timer => clearTimeout(timer)
+        });
+    }).inSingletonScope();
+    bind(FrontendApplicationContribution).toService(GoldieWorkspaceConnection);
+    rebind(CodexFrontendService).to(GoldieCodexFrontendService).inSingletonScope();
     bind(GoldieWidget).toSelf();
     // Use Theia's regular picker for Goldie; the native Mac picker can disable valid Markdown selections.
     bind(GOLDIE_HANDOFF_DIALOG).to(DefaultFileDialogService).inSingletonScope();

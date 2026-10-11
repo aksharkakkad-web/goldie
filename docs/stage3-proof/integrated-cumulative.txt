@@ -1,0 +1,363 @@
+yarn run v1.22.22
+$ yarn test:stage2
+$ yarn test:stage1
+$ yarn test:stage0
+$ yarn backend:test && yarn workspace @goldie/contracts test && yarn workspace theia-ide-product-ext test && node --test scripts/test-goldie-stage0.cjs
+$ yarn workspace @goldie/backend test
+$ yarn build && mocha "lib/test/**/*.test.js"
+$ tsc -b
+
+
+  backend configuration
+    ✔ uses loopback-only defaults
+    ✔ configures Gemini server-side with a bounded synthesis deadline
+    ✔ rejects an invalid port
+    ✔ normalizes a whitespace-only provider key to missing
+    ✔ defaults speech to George, a bounded timeout and a local data directory
+    ✔ validates configurable speech timeouts and voice identifiers
+
+  ElevenLabs credential check
+    ✔ sends the credential only in the xi-api-key header to /v1/models
+    ✔ rejects a blank key before making a request
+    ✔ sanitizes provider authentication failures
+    ✔ aborts a stalled provider request
+    ✔ does not forward the credential across redirects
+
+  Gemini teaching REST adapter
+    ✔ generates contextual conversations and distinct practice through the same structured REST boundary
+    ✔ rejects malformed answers and duplicate practice instead of falling back, and keeps quota/timeouts safe
+    ✔ requests low thinking for interactive Gemini 3 planning and teaching without breaking older model requests
+    ✔ uses header credentials, structured output and separate untrusted context for planning and teaching
+    ✔ rejects missing credentials before any request
+    ✔ instructs teaching to qualify guarantees and account for side effects outside a transaction
+    ✔ sanitizes provider failures and does not automatically retry
+    ✔ bounds stalled headers and bodies with the same total timeout (73ms)
+    ✔ rejects malformed, truncated, blocked, oversized and invalid plans rather than offering a fixture
+    ✔ accepts a no-offer decision and roadmaps longer than ten phases
+    ✔ rejects observed grounding and oversized teaching text
+    ✔ rejects expanded explanations that exceed the focused 100-word budget
+    ✔ sends the requested expanded mode as trusted instruction and mode-specific schema guidance
+    ✔ limits simultaneous generations and frees capacity after a failure
+    ✔ does not follow redirects carrying a credential
+
+  GET /health
+    ✔ returns the exact shared health contract (45ms)
+    ✔ allows only the configured local origin
+
+  prepared lesson service
+    ✔ creates a frozen three-phase session only from an explicit accepted offer
+    ✔ does not complete taught phases and permits speech only for published session text
+    ✔ preserves the question phase and normalizes explicit aliases with an honest unknown fallback
+    ✔ records terminal actions separately, deduplicates retries, and rejects conflicting action IDs
+    ✔ persists progress across restart without retaining raw context and serializes concurrent actions
+    ✔ rejects competing active sessions, unknown identifiers, premature completion and corrupt state
+    ✔ rejects stale outstanding offers and preserves pause or asking state when skipping
+    ✔ does not commit progress in memory when its atomic replacement fails
+    ✔ does not accept an audio-ended completion while paused or answering a question
+
+  ElevenLabs smoke CLI
+    ✔ prints only the actionable error when the key is missing
+
+  Stage 2 smoke CLI safety
+    ✔ fails before generating or spending credits when Gemini credentials are missing (97ms)
+    ✔ rejects unknown flags before attempting provider access (91ms)
+Stage 2 smoke: /api/offer starting
+Stage 2 smoke: /api/offer succeeded in 2 ms
+Stage 2 smoke: /api/sessions starting
+Stage 2 smoke: /api/sessions succeeded in 1 ms
+Stage 2 smoke: /api/teach starting
+Stage 2 smoke: /api/teach succeeded in 1 ms
+Stage 2 smoke: /api/teach starting
+Stage 2 smoke: /api/teach succeeded in 1 ms
+Stage 2 smoke: /api/offer starting
+Stage 2 smoke: /api/offer succeeded in 1 ms
+Stage 2 smoke: /api/sessions starting
+Stage 2 smoke: /api/sessions succeeded in 1 ms
+Stage 2 smoke: /api/teach starting
+Stage 2 smoke: /api/teach succeeded in 1 ms
+Stage 2 smoke: /api/offer starting
+Stage 2 smoke: /api/offer succeeded in 1 ms
+Stage 2 smoke: /api/sessions starting
+Stage 2 smoke: /api/sessions succeeded in 1 ms
+Stage 2 smoke: /api/teach starting
+Stage 2 smoke: /api/teach succeeded in 1 ms
+Stage 2 smoke: /api/offer starting
+Stage 2 smoke: /api/offer succeeded in 1 ms
+    ✔ exercises all sample contexts, saves reviewable output and closes every accepted lesson
+Stage 2 smoke: /api/offer starting
+    ✔ identifies the failing operation and elapsed time without retrying a provider failure
+
+  real-speech smoke CLI safety
+    ✔ fails before creating sessions or spending credits when credentials are absent (91ms)
+
+  Stage 3 live smoke opt-in
+    ✔ refuses provider use without an explicit live flag and valid audio argument (92ms)
+    ✔ rejects missing server credentials before opening a lesson or making paid requests (171ms)
+
+  speech cache
+    ✔ deduplicates paid generation and reuses persisted audio after restart (39ms)
+    ✔ checks session/content authorization even before serving cached speech
+    ✔ rejects path traversal, missing files and malformed cached audio
+    ✔ allows an explicit retry after failure without retaining a rejected in-flight promise
+    ✔ reports unwritable cache storage without making a paid request
+
+  ElevenLabs speech adapter
+    ✔ distinguishes credit exhaustion returned as HTTP 401 from rejected credentials without exposing provider text
+    ✔ posts only approved teaching text and returns MP3 bytes
+    ✔ rejects missing credentials and oversized text before any paid call
+    ✔ sanitizes provider errors without retrying or disclosing credentials
+    ✔ never forwards a credential through a redirect
+    ✔ bounds a stalled response body, not just the response headers
+    ✔ keeps the synthesis deadline when an error response body stalls during quota classification
+    ✔ rejects oversized, empty and non-audio provider responses
+    ✔ bounds chunked audio without trusting content-length
+
+  Stage 1 real HTTP journey
+    ✔ serves a full text-and-speech journey without mutating the frozen roadmap
+    ✔ rejects unaccepted speech, arbitrary text, malformed JSON and disallowed browser origins
+    ✔ keeps text and progress usable when speech is not configured
+
+  Stage 2 real HTTP integration with controlled upstream HTTP
+    ✔ offers, freezes, speaks, asks, advances, restores and recaps through the real contracts
+    ✔ passes the normalized knowledge baseline to Gemini and accepts its variable roadmap
+    ✔ returns an honest configured error rather than a prepared offer when Gemini has no key
+
+  Stage 2 immutable lesson planning
+    ✔ plans once at offer, previews at most three topics and accepts the exact unbounded roadmap
+    ✔ estimates listening from the frozen phase count instead of an inflated model estimate
+    ✔ uses only the normalized profile allowlist and frozen context for teaching and persists both detail caches
+    ✔ deduplicates concurrent plans and caches positive and negative evaluations across restarts
+    ✔ separates cached evaluations by context, normalized knowledge and provider identity
+    ✔ does not call a provider for explicit references or empty context and rejects missing configuration and malformed profiles
+    ✔ does not cache transient failures and retries duplicate teaching safely
+    ✔ freezes model identity across restart while serving cached detail without configuration
+    ✔ suppresses an already accepted project revision across contexts and fixture routing after closure
+    ✔ rechecks acceptance when slow planning finishes and never holds the storage queue during generation
+    ✔ deduplicates acceptance races and prevents competing active sessions
+    ✔ does not publish a stale explanation after a phase advances or a lesson closes
+    ✔ never substitutes the old general FAQ when live conversational generation is not configured
+    ✔ migrates valid version 1 progress without loss and rejects invalid old invariants without rewriting bytes
+    ✔ caches teaching for phase IDs that coincide with inherited object properties
+    ✔ captures offer and teaching request identities before awaiting external generation
+    ✔ rejects malformed durable snapshots, cache identities and progress while preserving corrupt files
+    ✔ finishes dynamic phases using server-confirmed progress and rejects closed speech
+    ✔ rejects full history before paid planning while serving cached positive and negative evaluations
+    ✔ joins an in-flight duplicate after history fills and retains the commit-time capacity check
+
+  Stage 3 HTTP authorization and practice
+    ✔ retrieves without generation, authorizes coverage, supports closed-session practice but not closed speech
+    ✔ authorizes transcription before configured tools and keeps the large audio body limit route-specific
+
+  Stage 3 durable conversation and optional practice
+    ✔ answers unseen questions with frozen context, saved explanation and only six successful turns
+    ✔ recovers the exact committed answer after a lost response and restart, and rejects conflicting intent reuse
+    ✔ deduplicates identical pending questions, rejects another question, and discards an answer after an intervening action
+    ✔ does not append failed generations or silently substitute a prepared FAQ
+    ✔ discards question results after skip or closure
+    ✔ rejects malformed practice and leaves generation manually retryable without publishing content
+    ✔ generates practice only on demand for covered phases, caches across restart and never publishes it as speech
+    ✔ supports final covered-phase practice after closure without reopening or changing recap
+    ✔ migrates V2 without losing content, actions or question restoration
+
+  private local transcription
+    ✔ normalizes locally, deduplicates matching intents briefly, rejects collisions and removes private job files (198ms)
+    ✔ authorizes accepted active phase before invoking tools and rechecks before returning (437ms)
+    ✔ bounds decoded size, rejects malformed media and measures overlong decoded audio (172ms)
+    ✔ validates a full-size upload without regex stack exhaustion and rejects decoded silence before recognition (107ms)
+    ✔ returns actionable errors for missing tools, silence, excessive output, failed processes and timeout; always cleans up (1051ms)
+    ✔ permits only one distinct transcription job at a time (340ms)
+
+
+  102 passing (4s)
+
+$ yarn build && mocha "lib/test/**/*.test.js"
+$ tsc -b
+
+
+  Goldie API contracts
+    ✔ accepts only the exact successful health payload
+    ✔ rejects malformed revisions and phases without stable IDs
+    ✔ rejects source excerpts whose line range runs backwards
+    ✔ accepts a typed ask request without source evidence
+
+  Stage 1 contracts
+    ✔ requires accepted content IDs instead of accepting arbitrary billable text
+    ✔ identifies the reference lesson explicitly without parsing arbitrary handoffs
+    ✔ requires a target phase for phase actions but not for pause/resume
+    ✔ keeps roadmap length variable and self-reported familiarity separate
+    ✔ gives lesson and answer text stable speech references
+    ✔ limits audio identifiers to opaque hashes and declares the MIME type
+
+  Stage 2 teaching profile
+    ✔ defaults a missing baseline and strips unrelated private profile fields
+    ✔ rejects invalid levels and unbounded or empty familiarity claims
+
+
+  12 passing (7ms)
+
+$ yarn build && node --test test/*.test.cjs
+$ tsc -b
+✔ Stage 3 voice and practice cross the local RPC boundary with separate deadlines and no student upload (169.352417ms)
+✔ Stage 3 errors preserve safe retryability through the real RPC codec (10.528625ms)
+✔ safe backend error semantics survive the actual Theia RPC error codec without leaking response messages (4.098083ms)
+✔ Gemini errors survive RPC safely with backend retry semantics (5.301292ms)
+✔ generation has its own deadline while ordinary actions keep the shorter deadline (136.61025ms)
+✔ rejects inconsistent offers and empty or duplicate generated phase IDs (9.252625ms)
+✔ rejects inconsistent session references on acceptance, restoration and action responses (10.609083ms)
+✔ unknown, malformed and oversized API errors stay generic and bounded (2.333375ms)
+✔ offer posts its contract and validates its response (0.78525ms)
+✔ offer rejects an invalid response (0.542834ms)
+✔ startSession posts its contract and validates its response (0.501292ms)
+✔ startSession rejects an invalid response (0.597416ms)
+✔ teach posts its contract and validates its response (0.611166ms)
+✔ teach rejects an invalid response (0.356583ms)
+✔ ask posts its contract and validates its response (0.471375ms)
+✔ ask rejects an invalid response (0.360834ms)
+✔ complete posts its contract and validates its response (0.687333ms)
+✔ complete rejects an invalid response (0.309875ms)
+✔ rejects invalid and oversized requests before contacting the server (0.386833ms)
+✔ only accepts a configured local root HTTP URL (0.149833ms)
+✔ handles HTTP 404 without exposing remote errors or following redirects (0.435666ms)
+✔ handles HTTP 500 without exposing remote errors or following redirects (0.300541ms)
+✔ handles HTTP 302 without exposing remote errors or following redirects (0.625334ms)
+✔ rejects malformed JSON (0.36ms)
+✔ rejects unexpected fields (0.922208ms)
+✔ rejects wrong content type (0.5265ms)
+✔ rejects oversized JSON (1.397083ms)
+✔ deadline covers a response that never finishes (41.080292ms)
+✔ speech returns exact audio bytes encoded for local RPC (1.34775ms)
+✔ rejects missing type speech (0.720667ms)
+✔ rejects JSON speech (0.611875ms)
+✔ rejects empty audio speech (0.600042ms)
+✔ rejects oversized audio speech (1.54225ms)
+✔ speech uses its own deadline (40.670958ms)
+✔ audio GET is bounded by a whole-body deadline and never follows redirects (42.869959ms)
+✔ session retrieval and idempotent actions validate the current contract (1.259209ms)
+✔ never follows a speech URL supplied by metadata or accepts mismatched identifiers (1.215583ms)
+✔ connection failures produce safe actionable errors (0.348459ms)
+✔ context snapshots preserve handoff bytes and freeze both snapshot and profile (1.815ms)
+✔ invalid context never becomes a request snapshot (1.784916ms)
+✔ reads precisely the selected Markdown file, returning its text and basename (31.758084ms)
+✔ rejects HTTP, non-Markdown, malformed URI and missing file without leaking paths (2.684208ms)
+✔ rejects symlinks and directories instead of reading their targets (7.499417ms)
+✔ rejects oversized, empty or invalid UTF-8 handoffs without truncation (7.818833ms)
+✔ accepts a real healthy response and always requests /health (11.473ms)
+✔ rejects unhealthy health responses (5.107625ms)
+✔ rejects malformed health responses (0.967083ms)
+✔ rejects null health responses (1.694916ms)
+✔ rejects wrong type health responses (1.636084ms)
+✔ rejects unexpected fields health responses (5.763542ms)
+✔ rejects oversized health responses (1.946709ms)
+✔ rejects server error health responses (1.009666ms)
+✔ rejects redirect health responses (1.778709ms)
+✔ times out even if the service never finishes sending its body (51.439917ms)
+✔ reports unavailable after a connection is refused (0.63625ms)
+✔ rejects nonlocal, credential-bearing, and non-HTTP addresses before requesting (0.117ms)
+✔ explicit selector offers without speech and decline never accepts (6.137458ms)
+✔ accepted lesson requests standard text then speech by content ID (11.30875ms)
+✔ natural end offers practice before continuing;  skip, familiarity and recap remain authoritative (17.486208ms)
+✔ pause/resume changes server status and retains exact original clip position (3.469125ms)
+✔ question and expanded add-on preserve lesson clip and explicitly resume server (3.766333ms)
+✔ lost action response retries the same ID and blocks different navigation intent (0.742208ms)
+✔ lost pause response retains ID and retries the question after server pause (0.426167ms)
+✔ speech failure retains text and manual Play retries content without inventing progress (0.197041ms)
+✔ restore learning uses saved active phase and progress without autoplay (0.941875ms)
+✔ restore paused uses saved active phase and progress without autoplay (0.343125ms)
+✔ restore asking uses saved active phase and progress without autoplay (0.17925ms)
+✔ unavailable restored session stays recoverable without silently creating another (0.162042ms)
+✔ restore final progress or terminal sessions retrieves recap without speech (0.368917ms)
+✔ late lesson events after skip do not advance or change audio of the new phase (0.82ms)
+✔ end cancels pending speech and retains server partial recap (0.695459ms)
+✔ end waits for in-flight question mutation and ignores its late answer (1.015833ms)
+✔ failed final closure preserves completed intent even when End retries it (0.250041ms)
+✔ Find another lesson preserves context revision after closure (0.179875ms)
+✔ dispose invalidates pending responses and releases player resources (0.068375ms)
+✔ real player publishes current clip timing and ignores released clip updates (0.145375ms)
+✔ real widget presents architecture estimate, conceptual scope, explicit text completion and supported questions (24.465709ms)
+✔ new narrow dock gets readable width while restored user width is respected (1.294667ms)
+✔ failed teach after skip retries content without advancing another phase (0.494708ms)
+✔ released answer events after resume cannot mark the lesson ended (1.239625ms)
+✔ mark read from a paused lesson explicitly resumes before server completion (0.3295ms)
+✔ ending after a lost skip response derives the recap progress from server (0.214625ms)
+✔ natural end while the play promise settles still completes exactly one phase (0.81ms)
+✔ pending acceptance survives disposal before its response and restores without audio (0.297292ms)
+✔ lost acceptance response recovers the same session after restart without autoplay (0.157958ms)
+✔ unavailable recovery storage prevents acceptance until the user can retry saving (0.269542ms)
+✔ failed session-reference replacement retains the persisted pending offer for recovery (0.193417ms)
+✔ safe nonretryable RPC failures display their message without retry controls or retry work (2.463417ms)
+✔ nonretryable lesson speech offers explicit Play after correction without advertising Retry (1.584375ms)
+✔ live context goes unchanged to offer, acceptance, teach, ask and completion (0.276542ms)
+✔ revision changes only with handoff or profile, survives restart, and declined retries do not create speech (0.132375ms)
+✔ context changes are blocked during requests, offers, active lessons, questions and pending recovery (0.335459ms)
+✔ arbitrary IDs and 1 phases use the server roadmap (0.956875ms)
+✔ arbitrary IDs and 2 phases use the server roadmap (0.282542ms)
+✔ arbitrary IDs and 5 phases use the server roadmap (0.584292ms)
+✔ speech retry after acceptance does not create another session or regenerate teaching (0.111125ms)
+✔ malformed pending snapshot and legacy pending acceptance remain preserved without unsafe replay (0.109ms)
+✔ no loaded handoff cannot call live endpoints; confirmed legacy session still restores without autoplay (0.07125ms)
+✔ confirmed CONTEXT_CONFLICT archives acceptance and returns an idle usable panel (0.14075ms)
+✔ confirmed REVISION_CONFLICT archives acceptance and returns an idle usable panel (0.067125ms)
+✔ confirmed OFFER_NOT_FOUND archives acceptance and returns an idle usable panel (0.050542ms)
+✔ confirmed ACTIVE_SESSION archives acceptance and returns an idle usable panel (0.044917ms)
+✔ confirmed REVISION_ALREADY_ACCEPTED archives acceptance and returns an idle usable panel (0.044ms)
+✔ confirmed NO_LESSON_OFFER archives acceptance and returns an idle usable panel (0.046ms)
+✔ uncertain acceptance failure Network response lost preserves exact pending snapshot (0.092708ms)
+✔ uncertain acceptance failure AUTH_REQUIRED preserves exact pending snapshot (0.054709ms)
+✔ uncertain acceptance failure UNEXPECTED_PROVIDER_ERROR preserves exact pending snapshot (0.053208ms)
+✔ uncertain acceptance failure CONTEXT_CONFLICT preserves exact pending snapshot (0.0535ms)
+✔ same-window retry after a lost acceptance response restores the exact session without autoplay (0.160459ms)
+✔ failed rejection archive preserves pending acceptance for safe recovery (0.077625ms)
+✔ failed rejection tombstone preserves exact acceptance and permits a safe archival retry (0.100625ms)
+✔ rejected acceptance never retires a newer acceptance recovery record from another window (0.081ms)
+✔ rejected acceptance never retires a newer session recovery record from another window (0.041334ms)
+✔ rejected acceptance never retires a newer same-offer-different-context recovery record from another window (0.034333ms)
+✔ rejected acceptance never retires a newer corrupt recovery record from another window (0.035041ms)
+✔ voice preparation pauses before capture and retains original clip/time through explicit resume (0.191041ms)
+✔ failed server pause prevents microphone preparation without losing progress (0.091167ms)
+✔ voice lost answer response retries exact intent and speech failure retries only speech (0.552208ms)
+✔ cancelled voice transcription ignores late text and never asks (3.589958ms)
+✔ phase practice is explicit, cached and local, including final closed session (0.468875ms)
+✔ voice follow-up gets a new intent without replacing the original lesson clip (0.35225ms)
+✔ lost transcription retries one request ID; duplicate Send and end suppress late results (0.513208ms)
+✔ waveform gate and envelope separate silence from speech at different frame rates (0.995334ms)
+✔ one audible analysis path per element, retained on replay and released on disposal (6.12025ms)
+✔ responses stay local across navigation; model answers require explicit reveal (0.60525ms)
+✔ invalid counts, duplicate IDs and empty or oversized content are rejected (0.255041ms)
+✔ response length and navigation stay bounded (0.072916ms)
+✔ real practice component renders typed response and reveals no answer before explicit action (39.80525ms)
+✔ two windows reject conflicting acceptance safely without disturbing the owning lesson (65.298208ms)
+✔ 7-phase generated roadmap survives real transport, actions, backend restart and full recap (14.351666ms)
+✔ 12-phase generated roadmap survives real transport, actions, backend restart and full recap (21.452958ms)
+✔ interrupted acceptance recovers through real HTTP without autoplay (disposed before response) (6.278042ms)
+✔ interrupted acceptance recovers through real HTTP without autoplay (lost response) (5.382416ms)
+✔ Theia transport completes a persisted real-backend journey with separately fetched speech (53.645708ms)
+✔ Send waits for final chunk, releases mic immediately and repeated clicks share one result (2.109792ms)
+✔ 30 seconds stops and waits ready without sending or restarting (0.254625ms)
+✔ cancel during OS permission stops late tracks without starting capture (0.156334ms)
+✔ cancel while stopping discards the clip and ignores late recorder callbacks (0.139959ms)
+✔ denied permission uses safe text and never echoes OS details (0.493083ms)
+✔ runtime errors, empty recordings and excessive bytes release tracks (1.244292ms)
+✔ blur, pagehide, hidden document and disposal clean up lifecycle listeners and pending permission (0.719083ms)
+✔ active lesson offers voice-only Ask Goldie with no typed composer or microphone check (13.500625ms)
+✔ recording and ready states expose Send and Cancel while progression controls are disabled (2.999459ms)
+✔ submitting hides duplicate Send, keeps Cancel, and shows local transcription status (1.214792ms)
+✔ recognized transcript is read-only and answer text remains visible after speech failure (1.449625ms)
+✔ practice choice and recap expose explicit practice entry for completed phases (3.330667ms)
+ℹ tests 146
+ℹ suites 0
+ℹ pass 146
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 710.31425
+✔ Theia health client connects to the real backend and handles it going offline (33.268875ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 151.491875
+Done in 11.07s.

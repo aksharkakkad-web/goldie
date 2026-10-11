@@ -102,6 +102,14 @@ Run `yarn test:stage1` and `yarn lint` before handoff. These do not spend credit
 Native playback and failure evidence, diagnostic fixture limits, and the separate
 packaged-Electron test prerequisite are in [the Stage 1 guide](docs/goldie-stage1.md).
 
+## Stage 3 backend setup
+
+Stage 3 adds conversational Gemini answers, optional text practice and local Whisper
+transcription. See `docs/stage3-integration.md` for explicit binary/model setup,
+server-only paths and exact Node/RPC payloads. Run `yarn test:stage3` for cumulative
+checks. The recording/practice renderer is Rishit's separate track; existing Stage 2
+typed UI is not proof of the Stage 3 voice-only gate. No microphone starts on restore.
+
 ## Integrated Stage 2
 
 Open the Goldie panel and choose **Load handoff** or run **Goldie: Load sample handoff**
@@ -216,9 +224,30 @@ The reviewed product specification is saved at `docs/Goldie_HackNC_PRD.md`.
 Stage 0 implements the Goldie connection panel, teaching backend, shared API contracts,
 and real ElevenLabs credential validation. The integrated Stage 1 desktop adds prepared
 web-app architecture lessons, local persistent session/progress state, Q&A, recap and
-real ElevenLabs playback/cache. The local Stage 2 candidate adds Gemini-driven
-roadmaps/teaching and explicit handoff/profile loading. Onboarding, conversational
-Gemini Q&A and live Codex handoffs remain future work.
+real ElevenLabs playback/cache. Stage 2 adds Gemini-driven roadmaps/teaching and
+explicit handoff/profile loading, merged in PR #3. Stage 3 backend work adds
+conversational answers, local transcription and practice; native integration remains
+a separate gate. Onboarding and live Codex handoffs remain future work.
 See `docs/stage1-api.md` for exact contracts and `docs/goldie-stage1.md` for the native
-workflow and verified integration status. Stage 1 was merged in PR #2; Stage 2
-delivery still requires approval and the human together-run checkpoint remains open.
+workflow and verified integration status. Stage 1 was merged in PR #2 and Stage 2
+in PR #3; the human together-run checkpoint remains open.
+
+
+### Stage 3 development checkpoint
+
+Stage 3 now has voice-only questions and optional phase practice wired to Akshar's contracts. In an accepted open lesson: Ask Goldie → speak → Send question; Cancel discards. The 30-second limit stops and waits for Send/Cancel. Transcript is read-only. Retry preserves the question intent; speech failures retain text. Resume explicitly returns to the original lesson clip. Covered phases offer Practice / Continue; closed recaps allow practice for covered phases.
+
+Run `yarn --frozen-lockfile` after pulling dependency changes. Stale installed Zod versions can make backend typechecking exhaust memory. On this Mac, backend and shared contracts must both resolve locked Zod 4.6.5. Include `/opt/homebrew/bin` in PATH for FFmpeg regression checks.
+
+Actual local Whisper is configured in ignored `backend/.env`; Gemini and ElevenLabs keys still need private configuration. See `docs/stage3-proof/FRONTEND_INTEGRATION.md` for 261 cumulative checks, native fixture screenshots and the remaining human/live-provider gate. Do not call overall Stage 3 complete from fixture evidence.
+
+Avoid running `yarn electron build` against the same outputs while `yarn electron watch` is bundling: stop that watcher for a full build, then restart it. Both can otherwise race on the same source map. For normal source changes, let watch finish and reload; restart Electron if layout restoration stalls.
+Fresh focused verification:
+
+```sh
+node --test theia-extensions/product/test/goldie-recorder.test.cjs theia-extensions/product/test/goldie-practice.test.cjs theia-extensions/product/test/goldie-recording-widget.test.cjs theia-extensions/product/test/goldie-lesson.test.cjs theia-extensions/product/test/goldie-orb-audio.test.cjs
+yarn --cwd theia-extensions/product build
+yarn --cwd theia-extensions/product lint
+```
+
+Use the pinned PATH documented above. Native proof lives in `docs/stage3-proof`. Keep the existing `goldie` tmux watch/backend/ide windows running. If Reload leaves an empty shell, quit Electron and rerun the documented Electron start command; do not start duplicate watchers.

@@ -1,0 +1,118 @@
+yarn run v1.22.22
+$ eslint --ext js,jsx,ts,tsx scripts && lerna run lint
+Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/scripts/build-with-local-theia.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/scripts/fetch-dash-licenses-jar.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/scripts/generate-next-icons.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+lerna notice cli v9.0.7
+
+ Lerna (powered by Nx)   Running target lint for 7 projects:
+
+- theia-ide-electron-app
+- theia-ide-next-electron-app
+- @goldie/backend
+- @goldie/contracts
+- theia-ide-launcher-ext
+- theia-ide-product-ext
+- theia-ide-updater-ext
+
+
+
+> @goldie/contracts:lint
+
+
+> theia-ide-updater-ext:lint
+
+
+> theia-ide-launcher-ext:lint
+
+@goldie/contracts: (node:70142) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+@goldie/contracts: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-launcher-ext: (node:70147) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-launcher-ext: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-updater-ext: (node:70146) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-updater-ext: (Use `node --trace-warnings ...` to show where the warning was created)
+@goldie/contracts: (node:70154) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+@goldie/contracts: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-updater-ext: (node:70153) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-updater-ext: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-launcher-ext: (node:70152) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-launcher-ext: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-updater-ext:
+theia-ide-updater-ext: theia-ide-updater-ext: $ eslint --ext js,jsx,ts,tsx src
+@goldie/contracts:
+@goldie/contracts: @goldie/contracts: $ eslint --ext ts src test
+theia-ide-launcher-ext: $ eslint --ext js,jsx,ts,tsx src
+theia-ide-updater-ext: (node:70155) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-updater-ext: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-updater-ext:
+theia-ide-updater-ext: /Users/rishits/Documents/ChatGPT/hacknc/buildsense/theia-extensions/updater/src/electron-main/update/theia-updater-main-module.ts
+theia-ide-updater-ext:   22:13  warning  'JsonRpcConnectionHandler' is deprecated. [object Object]  deprecation/deprecation
+theia-ide-updater-ext:
+theia-ide-updater-ext: ✖ 1 problem (0 errors, 1 warning)
+theia-ide-updater-ext:
+theia-ide-launcher-ext: (node:70157) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-launcher-ext: (Use `node --trace-warnings ...` to show where the warning was created)
+@goldie/contracts: (node:70156) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+@goldie/contracts: (Use `node --trace-warnings ...` to show where the warning was created)
+
+> theia-ide-product-ext:lint
+
+
+> @goldie/backend:lint
+
+@goldie/backend: (node:70218) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+@goldie/backend: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-product-ext: (node:70217) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-product-ext: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-product-ext: (node:70221) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-product-ext: (Use `node --trace-warnings ...` to show where the warning was created)
+@goldie/backend: (node:70222) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+@goldie/backend: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-product-ext: $ eslint --ext js,jsx,ts,tsx src
+@goldie/backend:
+@goldie/backend: @goldie/backend: $ eslint --ext ts src test
+theia-ide-product-ext: (node:70223) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-product-ext: (Use `node --trace-warnings ...` to show where the warning was created)
+
+> theia-ide-electron-app:lint
+
+
+> theia-ide-next-electron-app:lint
+
+theia-ide-next-electron-app: (node:70227) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-next-electron-app: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-electron-app: (node:70226) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-electron-app: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-electron-app: (node:70230) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-electron-app: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-next-electron-app: (node:70231) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-next-electron-app: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-next-electron-app:
+theia-ide-next-electron-app: theia-ide-next-electron-app: $ eslint --ext js,jsx,ts,tsx scripts
+theia-ide-electron-app:
+theia-ide-electron-app: theia-ide-electron-app: $ eslint --ext js,jsx,ts,tsx scripts && eslint --ext js,jsx,ts,tsx test
+@goldie/backend: (node:70224) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+@goldie/backend: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-next-electron-app: Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/applications/electron-next/scripts/after-pack.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+theia-ide-next-electron-app: Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/applications/electron-next/scripts/appimage-helpers.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+theia-ide-next-electron-app: Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/applications/electron-next/scripts/cli-usage.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+theia-ide-next-electron-app: Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/applications/electron-next/scripts/theia-electron-main.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+theia-ide-next-electron-app: (node:70232) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-next-electron-app: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-electron-app: Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/applications/electron/scripts/after-pack.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+theia-ide-electron-app: Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/applications/electron/scripts/appimage-helpers.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+theia-ide-electron-app: Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/applications/electron/scripts/cli-usage.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+theia-ide-electron-app: Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/applications/electron/scripts/generate-app-update-yml.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+theia-ide-electron-app: Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/applications/electron/scripts/theia-electron-main.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+theia-ide-electron-app: (node:70234) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-electron-app: (Use `node --trace-warnings ...` to show where the warning was created)
+theia-ide-electron-app: Tried to lint /Users/rishits/Documents/ChatGPT/hacknc/buildsense/applications/electron/test/app.spec.js but found no valid, enabled rules for this file type and file path in the resolved configuration.
+theia-ide-electron-app: (node:70239) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+theia-ide-electron-app: (Use `node --trace-warnings ...` to show where the warning was created)
+
+
+
+ Lerna (powered by Nx)   Successfully ran target lint for 7 projects
+
+
+Done in 13.43s.

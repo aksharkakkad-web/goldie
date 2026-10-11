@@ -1,0 +1,31 @@
+{
+  "time": "2026-10-11T08:37:48.592Z",
+  "results": [
+    {
+      "case": "empty",
+      "status": 400
+    },
+    {
+      "case": "blank",
+      "status": 400
+    },
+    {
+      "case": "overlong",
+      "status": 400
+    },
+    {
+      "case": "wrong type",
+      "status": 400
+    },
+    {
+      "case": "malformed JSON",
+      "status": 400
+    },
+    {
+      "case": "valid trimmed task and retained starter tasks",
+      "status": 201,
+      "savedTaskId": "task-0e81b263-220a-45be-a6e4-c7583ceb50da",
+      "count": 4
+    }
+  ]
+}

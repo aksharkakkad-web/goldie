@@ -1,4 +1,5 @@
 // Copyright (C) 2026 Goldie contributors. SPDX-License-Identifier: MIT
+import { z } from 'zod';
 
 export const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
 export const SPEECH_SETTINGS = { stability: 0.5, similarity_boost: 0.75 };
@@ -23,6 +24,27 @@ export function isMp3(bytes: Buffer): boolean {
         || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0));
 }
 
+async function isQuotaError(response: Response): Promise<boolean> {
+    if (!response.body) { return false; }
+    const reader = response.body.getReader();
+    const chunks: Buffer[] = [];
+    let size = 0;
+    try {
+        while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) { break; }
+            size += chunk.value.byteLength;
+            if (size > 16384) { await reader.cancel(); return false; }
+            chunks.push(Buffer.from(chunk.value));
+        }
+        const parsed = z.object({ detail: z.object({ status: z.string() }) }).safeParse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        return parsed.success && parsed.data.detail.status === 'quota_exceeded';
+    } catch (error) {
+        if (error instanceof SyntaxError) { return false; }
+        throw error;
+    }
+}
+
 export async function synthesizeSpeech(text: string, options: SpeechOptions): Promise<Buffer> {
     if (!text.trim() || text.length > 4000) {
         throw new SpeechProviderError('INVALID_SPEECH_TEXT', 'Speech text must contain between 1 and 4000 characters.', false);
@@ -43,7 +65,9 @@ export async function synthesizeSpeech(text: string, options: SpeechOptions): Pr
             signal: controller.signal
         });
         if (!response.ok) {
-            await response.body?.cancel();
+            if (await isQuotaError(response)) {
+                throw new SpeechProviderError('SPEECH_QUOTA', 'Speech credits are unavailable. Text is still available; retry manually after credits are restored.', true);
+            }
             if (response.status === 401 || response.status === 403) {
                 throw new SpeechProviderError('SPEECH_AUTH_FAILED', 'Speech provider rejected the configured credentials.', false);
             }

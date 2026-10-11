@@ -1,0 +1,20 @@
+yarn run v1.22.22
+$ yarn --cwd applications/electron build
+$ yarn -s rebuild && theia build --app-target="electron" --mode development
+native node modules are already rebuilt for electron
+Found cached ffmpeg library.
+Hashes are equal, not replacing the ffmpeg library.
+"/Users/rishits/Documents/ChatGPT/hacknc/buildsense/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Framework.framework/Libraries/libffmpeg.dylib" does not contain proprietary codecs (13 found).
+[build/browser] Build started
+
+[build/browser] Finished with 0 errors in 8397ms.
+
+[build/node] Build started
+
+[build/node] Finished with 0 errors in 4036ms.
+
+[build/electron] Build started
+
+[build/electron] Finished with 0 errors in 17ms.
+
+Done in 21.67s.
