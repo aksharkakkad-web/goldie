@@ -192,4 +192,5 @@ route to the existing isolated Mac backend. The Mac must remain awake and online
 The shared 12,000-character speech/500-POST cap preserves credits; no provider keys
 leave the Mac. The server-to-server bridge secret remains required. Anyone with
 the public link can use the shared budget. See the deployment runbook above. This is not a production multi-user
-backend or independent cloud-hosting claim. No Git push/merge was performed.
+backend or independent cloud-hosting claim. Website source publication uses the
+separate `codex/web-demo` branch; a merge into `main` requires separate approval.

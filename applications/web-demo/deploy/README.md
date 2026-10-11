@@ -3,7 +3,8 @@
 Akshar approved Vercel + a protected temporary Cloudflare connection on October 11.
 This is a judging setup, **not an independently hosted or production backend**.
 
-Website: https://goldie-judge-demo.vercel.app  
+Website: https://goldie-judge-demo.vercel.app
+
 Vercel project: `goldie-judge-demo`, team `aksharkakkad-webs-projects`.
 
 ## Access and boundaries
