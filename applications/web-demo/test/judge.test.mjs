@@ -9,7 +9,6 @@ import { createJudgeHandler } from '../deploy/handler.mjs';
 import { buildJudgeOutput } from '../deploy/build.mjs';
 
 const token = 'controlled-bridge-token-not-a-real-secret';
-const basic = `Basic ${Buffer.from('judge:test-passcode').toString('base64')}`;
 async function serve(t, server) {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
@@ -81,16 +80,17 @@ test('corrupt usage is not reset on restart and request limits stop generation',
     const response = await fetch(url + '/api/offer', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: '{}' });
     assert.equal(response.status, 429); assert.equal((await response.json()).error.code, 'DEMO_REQUEST_BUDGET');
 });
-test('deployed function serves actual packaged assets and mapped original paths behind auth', async t => {
+test('deployed function serves packaged assets anonymously without a login challenge', async t => {
     const output = join(await folder(t), 'output'); await buildJudgeOutput(output);
-    const handler = createJudgeHandler({ username: 'judge', password: 'test-passcode', bridgeToken: token,
+    const handler = createJudgeHandler({ bridgeToken: token,
         bridgeUrl: 'https://controlled.trycloudflare.com', publicDir: join(output, 'functions/judge.func/public') });
     const url = await serve(t, createServer(handler));
-    const root = await fetch(url + '/judge?__goldie_path=', { headers: { authorization: basic } });
+    const root = await fetch(url + '/judge?__goldie_path=');
     assert.equal(root.status, 200); assert.match(await root.text(), /Goldie learning panel/);
-    const shader = await fetch(url + '/judge?__goldie_path=orb-shaders.js', { headers: { authorization: basic } });
+    assert.equal(root.headers.get('www-authenticate'), null);
+    const shader = await fetch(url + '/judge?__goldie_path=orb-shaders.js');
     assert.equal(shader.status, 200); assert.match(await shader.text(), /uniform float audioLevel/);
-    assert.equal((await fetch(url + '/judge?__goldie_path=../handler.mjs', { headers: { authorization: basic } })).status, 404);
+    assert.equal((await fetch(url + '/judge?__goldie_path=../handler.mjs')).status, 404);
 });
 test('Vercel package includes only public assets and reviewed function code, never repo or keys', async t => {
     const output = join(await folder(t), 'output'); await buildJudgeOutput(output);
@@ -103,24 +103,23 @@ test('Vercel package includes only public assets and reviewed function code, nev
     assert.equal(config.version, 3); assert.equal(config.routes[0].dest, '/judge?__goldie_path=$1');
     assert.match(await readFile(join(output, 'functions/judge.func/public/orb-shaders.js'), 'utf8'), /uniform float audioLevel/);
 });
-test('Vercel handler protects all files with judge auth and proxies only to the fixed bridge', async t => {
+test('anonymous Vercel requests still use the private fixed bridge and reject cross-origin access', async t => {
     const calls = [];
-    const handler = createJudgeHandler({ username: 'judge', password: 'test-passcode', bridgeUrl: 'https://controlled.trycloudflare.com', bridgeToken: token,
+    const handler = createJudgeHandler({ bridgeUrl: 'https://controlled.trycloudflare.com', bridgeToken: token,
         publicDir: join(await folder(t), 'public'), fetcher: async (url, options) => {
             calls.push({ url: String(url), options }); return Response.json({ ok: true });
         } });
     const url = await serve(t, createServer(handler));
-    assert.equal((await fetch(url + '/')).status, 401);
-    assert.equal((await fetch(url + '/api/offer', { method: 'POST', headers: { authorization: basic, origin: 'https://evil.example' }, body: '{}' })).status, 403);
+    assert.equal((await fetch(url + '/api/offer', { method: 'POST', headers: { origin: 'https://evil.example' }, body: '{}' })).status, 403);
     assert.equal(calls.length, 0);
-    const response = await fetch(url + '/api/offer', { method: 'POST', headers: { authorization: basic, cookie: 'never-forward=x' }, body: '{}' });
+    const response = await fetch(url + '/api/offer', { method: 'POST', headers: { cookie: 'never-forward=x' }, body: '{}' });
     assert.equal(response.status, 200); assert.equal(calls[0].url, 'https://controlled.trycloudflare.com/api/offer');
     assert.equal(calls[0].options.headers.authorization, `Bearer ${token}`);
     assert.equal(calls[0].options.headers.cookie, undefined);
-    const health = await (await fetch(url + '/demo-config', { headers: { authorization: basic } })).json();
+    const health = await (await fetch(url + '/demo-config')).json();
     assert.deepEqual(health, { connected: true, reachable: true });
     assert.equal(calls.at(-1).url, 'https://controlled.trycloudflare.com/health');
-    assert.equal((await fetch(url + '/.env', { headers: { authorization: basic } })).status, 404);
+    assert.equal((await fetch(url + '/.env')).status, 404);
 });
 test('Vercel handler fails closed for missing credentials or unsafe upstream configuration', () => {
     assert.throws(() => createJudgeHandler({}), /credentials/);

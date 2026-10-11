@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { apiMethod, bodyBytes, responseBytes, matches, failure, fail, json, security } from './http.mjs';
+import { apiMethod, bodyBytes, responseBytes, failure, fail, json, security } from './http.mjs';
 const assets = new Map([
     ['/', ['index.html', 'text/html; charset=utf-8']], ['/index.html', ['index.html', 'text/html; charset=utf-8']],
     ['/style.css', ['style.css', 'text/css; charset=utf-8']], ['/orb-shaders.js', ['orb-shaders.js', 'text/javascript; charset=utf-8']],
@@ -10,20 +10,15 @@ const assets = new Map([
     ...['app', 'view', 'controller', 'api', 'media', 'scenario', 'orb'].map(name => [`/src/${name}.js`, [`src/${name}.js`, 'text/javascript; charset=utf-8']])
 ]);
 
-export function createJudgeHandler({ username, password, bridgeUrl, bridgeToken,
+export function createJudgeHandler({ bridgeUrl, bridgeToken,
     publicDir = resolve(dirname(fileURLToPath(import.meta.url)), 'public'), fetcher = globalThis.fetch } = {}) {
-    if (!username || !password || !bridgeToken || bridgeToken.length < 32) { throw new Error('Missing judge credentials.'); }
+    if (!bridgeToken || bridgeToken.length < 32) { throw new Error('Missing bridge credentials.'); }
     const bridge = new URL(bridgeUrl);
     if (bridge.protocol !== 'https:' || !/^[a-z0-9-]+\.trycloudflare\.com$/.test(bridge.hostname)
         || bridge.port || bridge.pathname !== '/' || bridge.username || bridge.password || bridge.search || bridge.hash) { throw new Error('Use the approved HTTPS tunnel origin.'); }
-    const authorization = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
     return async (req, res) => {
         security(res);
         try {
-            if (!matches(req.headers.authorization, authorization)) {
-                res.setHeader('www-authenticate', 'Basic realm="Goldie judge demo", charset="UTF-8"');
-                throw failure(401, 'JUDGE_ACCESS_REQUIRED', 'Enter the judging username and passcode supplied by the team.');
-            }
             const url = new URL(req.url, 'https://judge.local');
             const path = url.searchParams.has('__goldie_path') ? `/${url.searchParams.get('__goldie_path')}` : url.pathname;
             if (req.headers.origin && req.headers.origin !== `https://${req.headers.host}`) { throw failure(403, 'ORIGIN_FORBIDDEN', 'Use the Goldie judging website.'); }
@@ -52,8 +47,7 @@ export function createJudgeHandler({ username, password, bridgeUrl, bridgeToken,
 let handler;
 export default async function judge(req, res) {
     try {
-        handler ??= createJudgeHandler({ username: process.env.GOLDIE_JUDGE_USERNAME, password: process.env.GOLDIE_JUDGE_PASSWORD,
-            bridgeUrl: process.env.GOLDIE_JUDGE_BRIDGE_URL, bridgeToken: process.env.GOLDIE_JUDGE_BRIDGE_TOKEN });
+        handler ??= createJudgeHandler({ bridgeUrl: process.env.GOLDIE_JUDGE_BRIDGE_URL, bridgeToken: process.env.GOLDIE_JUDGE_BRIDGE_TOKEN });
         await handler(req, res);
     } catch { security(res); console.error('Goldie judge gateway configuration unavailable.'); fail(res, new Error()); }
 }

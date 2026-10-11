@@ -7,6 +7,23 @@ import { mountOrb } from './orb.js';
 import { escapeHtml as e, icon, highlight, mentorView, nextStep, processingLabel } from './view.js';
 
 const $ = selector => document.querySelector(selector);
+function showOpening() {
+    const screen = $('#opening-screen');
+    try {
+        if (sessionStorage.getItem('goldie.web-demo.opened.v1')) { return; }
+        sessionStorage.setItem('goldie.web-demo.opened.v1', 'true');
+    } catch { /* A blocked store must not block the opening or IDE. */ }
+    const workspace = $('.ide'); const skip = $('.skip-link');
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    screen.hidden = false; workspace.inert = true; skip.inert = true;
+    document.body.classList.add('intro-active');
+    // A brief brand introduction, not a model/voice loading indicator.
+    setTimeout(() => {
+        screen.classList.add('leaving'); document.body.classList.remove('intro-active');
+        setTimeout(() => { screen.hidden = true; workspace.inert = false; skip.inert = false; }, reducedMotion ? 0 : 500);
+    }, 1500);
+}
+showOpening();
 const media = new BrowserMedia();
 const persistence = {
     save(data) { try { sessionStorage.setItem('goldie.web-demo.session.v1', JSON.stringify(data)); } catch { /* A blocked store must not stop learning. */ } },

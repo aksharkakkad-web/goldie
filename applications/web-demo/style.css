@@ -22,6 +22,17 @@ svg { width: 19px; height: 19px; flex: none; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .skip-link { position: fixed; z-index: 20; left: 10px; top: -60px; color: var(--canvas); background: var(--bright); padding: 12px; }
 .skip-link:focus { top: 10px; }
+.opening-screen { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 28px; background: radial-gradient(ellipse at 50% 43%, #21142f 0, #0e0b14 34%, var(--canvas) 72%); opacity: 1; transition: opacity .5s ease, transform .5s ease; }
+.opening-screen.leaving { opacity: 0; transform: scale(1.025); pointer-events: none; }
+.opening-brand { text-align: center; max-width: 100%; margin-top: -30px; }
+.opening-mark { position: relative; display: grid; place-items: center; width: 136px; height: 136px; margin: 0 auto 30px; border: 1px solid #ab80dd30; border-radius: 38px; background: #20142a5c; box-shadow: 0 0 90px #9558e132, inset 0 0 34px #9c69d514; }
+.opening-mark img { object-fit: contain; filter: drop-shadow(0 0 22px #b78fe94d); }
+.opening-eyebrow { color: #b29bc9; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 15px; }
+.opening-brand h1 { color: var(--bright); font-size: clamp(30px, 5vw, 58px); font-weight: 500; line-height: 1.12; letter-spacing: -.045em; margin: 0; }
+.opening-caption { color: #a7a0b2; font-size: 14px; margin: 18px 0 0; }
+.opening-foot { position: absolute; bottom: max(35px, env(safe-area-inset-bottom)); color: #746a82; font-size: 10px; letter-spacing: .025em; text-align: center; }
+.ide { transition: opacity .5s ease, transform .5s ease; }
+.intro-active .ide { opacity: .15; transform: scale(.994); }
 .ide { height: 100vh; height: 100dvh; display: grid; grid-template-columns: 49px 209px minmax(0, 1fr) 365px; grid-template-rows: 36px minmax(0, 1fr) 24px; grid-template-areas: 'title title title title' 'rail explorer workspace mentor' 'status status status status'; }
 .titlebar { grid-area: title; display: flex; align-items: center; justify-content: space-between; background: #0e0f12; border-bottom: 1px solid var(--border); padding: 0 13px; font-size: 12px; }
 .window-controls { display: flex; gap: 8px; min-width: 170px; }

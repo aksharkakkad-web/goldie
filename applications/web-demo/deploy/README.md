@@ -8,13 +8,16 @@ Vercel project: `goldie-judge-demo`, team `aksharkakkad-webs-projects`.
 
 ## Access and boundaries
 
-The browser's native sign-in asks for username `judge` and the generated passcode.
-Akshar has the passcode in the delivery message and the ignored local file
-`backend/.data/web-demo-judge/private.json`. Never commit that file or paste its
-bridge token into a browser, chat, log or document. The provider `.env` remains on
+Akshar explicitly requested a public website with **no login or passcode**.
+Anyone with the link can open the IDE and use the shared demo budget. The opening
+screen is branding only, not an authentication or provider-loading screen.
+The server-to-server bridge still requires its separate secret, stored in the
+ignored local file `backend/.data/web-demo-judge/private.json`. Never commit that
+file or paste its bridge token into a browser, chat, log or document. Historical
+judge username/password fields are unused. The provider `.env` remains on
 the Mac; Gemini/ElevenLabs keys are **not** uploaded to Vercel or Cloudflare.
 
-All website assets and API requests require HTTP Basic authentication over HTTPS.
+Website assets and allowlisted API requests are anonymous over HTTPS.
 Vercel SSO is disabled only for this newly created project so judges need no Vercel
 account. Its generated bridge secret is encrypted in Vercel environment storage.
 The tunnel exposes only the loopback judge bridge—not the IDE, filesystem, terminal
@@ -56,12 +59,12 @@ locally. Nothing was installed globally. Its binary may disappear after temp-fil
 cleanup/reboot; reacquire the reviewed official release if necessary.
 
 Do not start duplicates on occupied ports. To stop judging access, Ctrl-C only the
-owned cloudflared process; the website then remains protected but shows the backend
+owned cloudflared process; the public website then shows the backend
 unavailable. Do not stop or modify unrelated desktop/main-thread services.
 
 If the tunnel restarts, update only `GOLDIE_JUDGE_BRIDGE_URL` in this project's
 production environment to the new HTTPS `trycloudflare.com` origin and redeploy
-the allowlisted output. Keep the same bridge secret/passcode and saved budget.
+the allowlisted output. Keep the same bridge secret and saved budget.
 Do not put provider keys in the deployment environment.
 
 ## Rebuild/redeploy
@@ -83,8 +86,9 @@ responses are bounded at 4 MiB to remain below the function payload limit.
 
 ## Verified versus still open
 
-- Public HTTPS page/assets load with the judge passcode; unauthenticated requests
-  return 401, private-file attempts 404, cross-origin requests fail closed.
+- Public HTTPS page/assets load anonymously without an authentication challenge;
+  private-file attempts return 404 and cross-origin requests fail closed. Direct
+  unauthenticated tunnel requests still return 401.
 - Deployed `/demo-config` reaches the real Mac backend `/health` through the tunnel.
   An unknown speech-content check returns 409 before any provider call.
 - The complete real UI journey runs against the deployed assets in Chrome with all

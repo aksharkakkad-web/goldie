@@ -78,6 +78,11 @@ backend, not a cloud speech service.
 
 ## Implemented behavior
 
+- A first-visit “Goldie IDE Demo” opening with the existing logo and purple glow,
+  held for 1.5 seconds before a half-second crossfade into the IDE. No extra click,
+  lesson, recording or voice request. Session storage skips the intro on refresh;
+  blocked storage still works. Reduced motion removes the transition. Covered
+  controls are temporarily inert, with keyboard access restored automatically.
 - Disclosed deterministic team-management replay, file browsing, syntax-highlighted
   read-only code, terminal replay and a bounded handoff. Sample auth/database imports
   are illustrative; the sample app is not compiled/executed or claimed as verified.
@@ -180,9 +185,11 @@ does not contain installed monorepo dependencies.
 
 ## Temporary judging access
 
-Akshar approved the Vercel website plus protected temporary Cloudflare connection.
-Judges use the supplied username/passcode; real lessons, questions and practice
+Akshar approved the Vercel website plus protected temporary Cloudflare connection,
+then explicitly requested removal of the browser login. Judges open the public
+website directly, with no account or passcode; real lessons, questions and practice
 route to the existing isolated Mac backend. The Mac must remain awake and online.
 The shared 12,000-character speech/500-POST cap preserves credits; no provider keys
-leave the Mac. See the deployment runbook above. This is not a production multi-user
+leave the Mac. The server-to-server bridge secret remains required. Anyone with
+the public link can use the shared budget. See the deployment runbook above. This is not a production multi-user
 backend or independent cloud-hosting claim. No Git push/merge was performed.

@@ -2,13 +2,11 @@
 const { chromium, expect } = require('playwright/test');
 const assert = require('node:assert/strict');
 const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
-const judgeConfig = process.env.GOLDIE_JUDGE_CONFIG ? JSON.parse(require('node:fs').readFileSync(process.env.GOLDIE_JUDGE_CONFIG, 'utf8')) : null;
-const judgeAccess = judgeConfig ? { httpCredentials: { username: judgeConfig.username, password: judgeConfig.password } } : {};
 
 (async () => {
     const browser = await chromium.launch({ channel: 'chrome', headless: false, args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
     try {
-        const context = await browser.newContext({ ...judgeAccess, permissions: ['microphone'], viewport: { width: 1440, height: 900 } });
+        const context = await browser.newContext({ permissions: ['microphone'], viewport: { width: 1440, height: 900 } });
         await context.addInitScript(() => {
             // Replace only external audio playback, not the controller or DOM.
             globalThis.AudioContext = undefined;
@@ -63,6 +61,16 @@ const judgeAccess = judgeConfig ? { httpCredentials: { username: judgeConfig.use
             await route.fulfill({ json });
         });
         const response = await page.goto(targetUrl); assert.equal(response.status(), 200, 'UI should be served');
+        assert.equal(response.headers()['www-authenticate'], undefined, 'No login challenge');
+        await expect(page.locator('#opening-screen')).toBeVisible();
+        await expect(page.locator('#opening-screen')).toContainText('Goldie IDE Demo');
+        assert.equal(await page.locator('.ide').evaluate(el => el.inert), true, 'Covered controls cannot receive focus');
+        assert.equal(calls.length, 0, 'Opening never starts paid work');
+        await page.screenshot({ path: '/tmp/goldie-web-opening.png', fullPage: true });
+        await expect(page.locator('#opening-screen')).toBeHidden();
+        assert.equal(await page.locator('.ide').evaluate(el => el.inert), false, 'IDE becomes interactive automatically');
+        await page.reload();
+        await expect(page.locator('#opening-screen')).toBeHidden();
         await expect(page.getByRole('button', { name: 'Run sample prompt' })).toHaveClass(/next-action/);
         await expect(page.locator('#next-step')).toContainText('Run sample prompt');
         assert.notEqual(await page.locator('#replay-action').evaluate(el => getComputedStyle(el).boxShadow), 'none');
@@ -164,13 +172,35 @@ const judgeAccess = judgeConfig ? { httpCredentials: { username: judgeConfig.use
         await page.keyboard.press('Tab');
         assert.ok(await page.evaluate(() => document.activeElement !== document.body), 'Keyboard reaches an interactive control');
         await context.close();
-        const offline = await browser.newPage({ ...judgeAccess, viewport: { width: 1440, height: 900 } });
+        for (const width of [900, 390]) {
+            const introContext = await browser.newContext({ viewport: { width, height: 844 } });
+            if (width === 390) {
+                await introContext.addInitScript(() => {
+                    Storage.prototype.getItem = Storage.prototype.setItem = () => { throw new Error('Storage disabled for this check'); };
+                });
+            }
+            const opening = await introContext.newPage();
+            await opening.route('**/demo-config', route => route.fulfill({ json: { connected: false, reachable: false } }));
+            await opening.route('**/api/**', () => { throw new Error('Opening must never request teaching or voice'); });
+            await opening.goto(targetUrl);
+            await expect(opening.locator('#opening-screen')).toBeVisible();
+            assert.ok(await opening.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Opening fits at ${width}`);
+            await opening.screenshot({ path: `/tmp/goldie-web-opening-${width}.png`, fullPage: true });
+            await expect(opening.locator('#opening-screen')).toBeHidden();
+            await opening.keyboard.press('Tab');
+            assert.ok(await opening.evaluate(() => document.activeElement !== document.body), 'Opening restores keyboard access');
+            await introContext.close();
+        }
+        const offline = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
         // No test context may fall through to a configured paid backend.
         await offline.route('**/demo-config', route => route.fulfill({ json: { connected: false, reachable: false } }));
         await offline.route('**/api/**', route => route.fulfill({ status: 503, json: { error: {
             code: 'DEMO_BACKEND_UNAVAILABLE', message: 'The live mentor is not connected. The coding replay still works.', retryable: true
         } } }));
         await offline.goto(targetUrl);
+        await expect(offline.locator('#opening-screen')).toBeVisible();
+        assert.equal(await offline.locator('#opening-screen').evaluate(el => getComputedStyle(el).transitionDuration), '0s');
+        await expect(offline.locator('#opening-screen')).toBeHidden();
         await offline.getByRole('button', { name: 'Run sample prompt' }).click();
         await offline.getByRole('button', { name: 'Skip replay' }).click();
         await offline.getByRole('button', { name: 'Prepare lesson', exact: true }).click();
@@ -179,6 +209,6 @@ const judgeAccess = judgeConfig ? { httpCredentials: { username: judgeConfig.use
         await expect(offline.locator('#mentor-content')).toHaveAttribute('aria-busy', 'false');
         await offline.screenshot({ path: '/tmp/goldie-web-offline.png', fullPage: true });
         assert.deepEqual(errors, []);
-        console.log(`PASS: controlled replay/opt-in/lesson/practice/voice/resume/recap/reset, stage-aware loader, responsive widths, reduced motion and honest offline state. ${calls.length} controlled API requests; zero paid requests.`);
+        console.log(`PASS: anonymous opening/automatic transition/refresh/blocked storage, controlled replay/opt-in/lesson/practice/voice/resume/recap/reset, loader, three widths, reduced motion and offline state. ${calls.length} controlled API requests; zero paid requests.`);
     } finally { await browser.close(); }
 })();

@@ -41,10 +41,9 @@ try {
         const token = 'controlled-contract-bridge-not-a-real-secret';
         bridge = await createJudgeBridge({ backendUrl, token, usageFile: join(directory, 'judge-usage.json') });
         const bridgeUrl = await listen(bridge);
-        const handler = createJudgeHandler({ username: 'judge', password: 'controlled-contract-password', bridgeToken: token,
+        const handler = createJudgeHandler({ bridgeToken: token,
             bridgeUrl: 'https://controlled.trycloudflare.com', fetcher: (url, options) => fetch(`${bridgeUrl}${new URL(url).pathname}`, options) });
         web = createServer(handler);
-        headers.authorization = `Basic ${Buffer.from('judge:controlled-contract-password').toString('base64')}`;
     } else { web = createDemoServer({ backendUrl }); }
     const webUrl = await listen(web);
     const api = new HttpApi((path, options) => fetch(`${webUrl}${path}`, { ...options, headers: { ...options.headers, ...headers } }));
