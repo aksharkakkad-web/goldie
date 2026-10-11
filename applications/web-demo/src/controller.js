@@ -2,13 +2,24 @@
 import { handoff } from './scenario.js';
 const id = () => globalThis.crypto.randomUUID();
 const closed = session => session && ['completed', 'dismissed'].includes(session.status);
+function requestStage(path, body) {
+    if (path === '/api/offer') { return 'offer'; }
+    if (path === '/api/teach') { return 'teaching'; }
+    if (path === '/api/speech') { return 'voice'; }
+    if (path === '/api/transcribe') { return 'transcription'; }
+    if (path === '/api/ask') { return 'thinking'; }
+    if (path === '/api/complete') { return 'recap'; }
+    if (path.endsWith('/practice')) { return body === undefined ? 'practice-cache' : 'practice'; }
+    if (path.endsWith('/actions')) { return body.action === 'pause' ? 'pausing' : body.action === 'resume' ? 'resuming' : 'saving'; }
+    return body === undefined ? 'restoring' : 'starting';
+}
 
 export class DemoController {
     constructor(api, media, persistence) {
         this.api = api; this.media = media; this.persistence = persistence;
         this.listeners = new Set(); this.generation = 0;
         this.context = { projectId: `web-demo-${id()}`, revision: 1, handoff, profile: { level: 'beginner', knownConcepts: [] } };
-        this.state = { view: 'idle', busy: false, error: '', retryable: false, session: null,
+        this.state = { view: 'idle', busy: false, processing: null, error: '', retryable: false, session: null,
             offer: null, explanation: '', playing: false, recording: 'idle', answer: '', question: '',
             batches: {}, drafts: {}, revealed: new Set(), recap: '', gatePhaseId: null };
         this.unsubscribeMedia = media.subscribe?.(event => {
@@ -25,11 +36,14 @@ export class DemoController {
     get active() { return this.state.session && !closed(this.state.session); }
     subscribe(fn) { this.listeners.add(fn); fn(this.state); return () => this.listeners.delete(fn); }
     emit() { for (const fn of this.listeners) { fn(this.state); } }
+    setProcessing(stage) { if (this.state.busy) { this.state.processing = stage; this.emit(); } }
+    async startPlayback() { this.setProcessing('playback'); await this.media.play(); }
     save() { this.persistence?.save({ context: this.context, sessionId: this.state.session?.sessionId, offer: this.state.offer,
         acceptancePending: Boolean(this.acceptancePending),
         practicePhaseIds: [...new Set([...(this.state.cachedPracticePhaseIds ?? []), ...Object.keys(this.state.batches)])] }); }
     async request(path, body) {
         const generation = this.generation;
+        this.setProcessing(requestStage(path, body));
         const data = await this.api.request(path, body, this.abort?.signal);
         if (generation !== this.generation) { throw new DOMException('Canceled', 'AbortError'); }
         return data;
@@ -37,7 +51,7 @@ export class DemoController {
     async run(work) {
         if (this.state.busy) { return; }
         const generation = this.generation;
-        this.abort = new AbortController(); this.state.busy = true; this.state.error = ''; this.state.retryable = false; this.retryWork = null; this.emit();
+        this.abort = new AbortController(); this.state.busy = true; this.state.processing = 'starting'; this.state.error = ''; this.state.retryable = false; this.retryWork = null; this.emit();
         try { await work(); }
         catch (error) {
             if (generation === this.generation && error.name !== 'AbortError') {
@@ -45,7 +59,7 @@ export class DemoController {
                 this.state.retryable = Boolean(error.retryable); this.retryWork = this.state.retryable ? work : null;
             }
         } finally {
-            if (generation === this.generation) { this.state.busy = false; this.state.playing = this.media.playing; this.emit(); }
+            if (generation === this.generation) { this.state.busy = false; this.state.processing = null; this.state.playing = this.media.playing; this.emit(); }
         }
     }
     async retry() { if (this.retryWork) { await this.run(this.retryWork); } }
@@ -99,7 +113,7 @@ export class DemoController {
         const speech = await this.request('/api/speech', { sessionId: this.state.session.sessionId, contentId: lesson.contentId });
         await this.media.load('lesson', speech);
         if (generation !== this.generation) { return; }
-        if (autoplay) { await this.media.play(); }
+        if (autoplay) { await this.startPlayback(); }
     }
     async action(action, phaseId, actionId = id()) {
         this.state.session = await this.request(`/api/sessions/${this.state.session.sessionId}/actions`, { actionId, action, ...(phaseId ? { phaseId } : {}) });
@@ -116,7 +130,7 @@ export class DemoController {
                 else { if (!this.media.lesson) {
                     const speech = await this.request('/api/speech', { sessionId: this.state.session.sessionId, contentId: this.state.contentId });
                     await this.media.load('lesson', speech);
-                } this.media.select('lesson'); await this.media.play(); }
+                } this.media.select('lesson'); await this.startPlayback(); }
             }
         });
     }
@@ -183,6 +197,7 @@ export class DemoController {
         this.media.pause(); this.state.playing = false; this.state.answer = ''; this.state.question = ''; this.state.view = 'question'; this.state.recording = 'permission';
         await this.run(async () => {
             await this.action('pause'); const generation = this.generation;
+            this.setProcessing('microphone');
             await this.media.startRecording();
             if (generation !== this.generation) { this.media.cancelRecording(); return; }
             this.state.recording = 'recording';
@@ -191,7 +206,7 @@ export class DemoController {
     questionStop() { if (this.state.recording === 'recording') { this.media.stopRecording(); this.state.recording = 'ready'; this.emit(); } }
     questionCancel() {
         this.generation++; this.abort?.abort(); this.media.cancelRecording(); this.media.pause();
-        this.state.recording = 'idle'; this.state.busy = false; this.state.playing = false; this.state.answer = ''; this.state.error = ''; this.retryWork = null;
+        this.state.recording = 'idle'; this.state.busy = false; this.state.processing = null; this.state.playing = false; this.state.answer = ''; this.state.error = ''; this.retryWork = null;
         this.state.view = 'lesson'; this.emit();
     }
     async questionSend() {
@@ -200,6 +215,7 @@ export class DemoController {
         const requestId = id(); let text; let data;
         await this.run(async () => {
             const generation = this.generation;
+            this.setProcessing('recording');
             data ??= await this.media.recordingData();
             if (generation !== this.generation) { throw new DOMException('Canceled', 'AbortError'); }
             text ??= (await this.request('/api/transcribe', { sessionId: this.state.session.sessionId, phaseId: this.phase.id, requestId, mimeType: 'audio/webm', dataBase64: data })).text;
@@ -213,7 +229,7 @@ export class DemoController {
             const speech = await this.request('/api/speech', { sessionId: this.state.session.sessionId, contentId: answer.contentId });
             await this.media.load('answer', speech);
             if (generation !== this.generation) { return; }
-            await this.media.play();
+            await this.startPlayback();
         });
         if (this.state.error && this.state.recording === 'processing') { this.state.recording = 'ready'; this.emit(); }
     }
@@ -222,7 +238,7 @@ export class DemoController {
         this.media.cancelRecording(); this.media.pause();
         await this.run(async () => {
             await this.action('resume'); this.state.recording = 'idle'; this.state.view = 'lesson';
-            this.media.select('lesson'); await this.media.play();
+            this.media.select('lesson'); await this.startPlayback();
         });
     }
     async reset() {
@@ -231,7 +247,7 @@ export class DemoController {
         this.generation++; this.abort?.abort(); this.media.clear(); this.media.cancelRecording(); this.persistence?.clear();
         this.context.projectId = `web-demo-${id()}`;
         Object.assign(this.state, { view: 'idle', session: null, offer: null, explanation: '', contentId: null,
-            playing: false, recording: 'idle', answer: '', question: '', batches: {}, cachedPracticePhaseIds: [], drafts: {}, revealed: new Set(), recap: '', error: '', gatePhaseId: null });
+            playing: false, processing: null, recording: 'idle', answer: '', question: '', batches: {}, cachedPracticePhaseIds: [], drafts: {}, revealed: new Set(), recap: '', error: '', gatePhaseId: null });
         this.emit();
     }
     dispose() { this.generation++; this.abort?.abort(); this.media.clear(); this.media.cancelRecording(); this.unsubscribeMedia?.(); this.listeners.clear(); }

@@ -23,6 +23,11 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
             };
         });
         const page = await context.newPage(); const errors = []; const calls = [];
+        const holds = new Map();
+        const hold = (path, method = 'POST') => {
+            let release; const pending = new Promise(resolve => { release = resolve; });
+            holds.set(`${method} ${path}`, pending); return release;
+        };
         page.on('pageerror', e => errors.push(e.message));
         let session;
         const fresh = () => ({ sessionId: 'controlled-session', projectId: 'controlled-project', snapshotRevision: 1,
@@ -32,6 +37,8 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
         await page.route('**/api/**', async route => {
             const request = route.request(); const path = new URL(request.url()).pathname;
             const body = request.method() === 'POST' ? request.postDataJSON() : undefined;
+            const key = `${request.method()} ${path}`;
+            if (holds.has(key)) { const pending = holds.get(key); holds.delete(key); await pending; }
             calls.push({ path, body }); let json;
             if (path === '/api/offer') json = { shouldOffer: true, offerId: 'controlled-offer', previewTopics: ['Frontend state', 'Server validation'], estimatedSeconds: 180 };
             else if (path === '/api/sessions') { session = fresh(); json = session; }
@@ -60,15 +67,55 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
         await page.getByRole('button', { name: 'Run sample prompt' }).click();
         await page.getByRole('button', { name: 'Skip replay' }).click();
         await expect(page.getByRole('button', { name: 'Prepare lesson', exact: true })).toHaveClass(/next-action/);
+        const releaseOffer = hold('/api/offer');
         await page.getByRole('button', { name: 'Prepare lesson', exact: true }).click();
+        await expect(page.locator('#processing-loader')).toBeVisible();
+        await expect(page.locator('#processing-label')).toHaveText('Preparing your lesson…');
+        await page.locator('.tree-file[data-file="app/page.tsx"]').click();
+        await expect(page.locator('#breadcrumb')).toContainText('page.tsx');
+        releaseOffer();
         await page.getByRole('button', { name: 'Not now', exact: true }).click();
+        await expect(page.locator('#processing-loader')).toBeHidden();
         assert.equal(calls.filter(c => c.path === '/api/sessions').length, 0);
         await page.getByRole('button', { name: 'Prepare lesson', exact: true }).click();
+        const releaseTeach = hold('/api/teach'); const releaseVoice = hold('/api/speech');
         await page.getByRole('button', { name: 'Explain this build', exact: true }).click();
+        await expect(page.locator('#processing-label')).toHaveText('Preparing this explanation…');
+        await expect(page.locator('#mentor-content')).toHaveAttribute('aria-busy', 'true');
+        releaseTeach();
+        await expect(page.locator('#processing-label')).toHaveText('Preparing voice…');
+        await expect(page.locator('#play')).toBeDisabled();
+        await expect(page.locator('.orb-wrap')).toBeHidden();
+        assert.ok(await page.locator('#processing-loader').getByRole('status').count());
+        for (const width of [1440, 900, 390]) {
+            await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+            const loader = await page.locator('#processing-loader').boundingBox();
+            const panel = await page.locator('#mentor').boundingBox();
+            assert.ok(loader.x >= panel.x && loader.y >= panel.y && loader.x + loader.width <= panel.x + panel.width + 1
+                && loader.y + loader.height <= panel.y + panel.height, `Loader stays inside Goldie at ${width}`);
+            await expect(page.locator('#editor')).toBeVisible();
+            assert.ok(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth), `No loader overflow at ${width}`);
+            await page.screenshot({ path: `/tmp/goldie-web-loading-${width}.png`, fullPage: true });
+        }
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        assert.equal(await page.locator('.processing-bar span').evaluate(el => getComputedStyle(el).animationName), 'none');
+        assert.ok(await page.locator('.processing-bar span').evaluate(el => {
+            const segment = el.getBoundingClientRect(); const bar = el.parentElement.getBoundingClientRect();
+            return segment.left >= bar.left && segment.right <= bar.right;
+        }), 'Reduced motion keeps a visible static indicator');
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        await page.setViewportSize({ width: 1440, height: 900 });
+        releaseVoice();
+        await expect(page.locator('#processing-loader')).toBeHidden();
+        await expect(page.locator('#mentor-content')).toHaveAttribute('aria-busy', 'false');
+        await expect(page.locator('#orb-status')).toHaveText('Goldie is speaking');
         await expect(page.getByRole('heading', { name: 'The frontend boundary', exact: true })).toBeVisible();
         await page.getByRole('button', { name: 'Pause audio', exact: true }).click();
         await page.getByRole('button', { name: 'Mark read & continue', exact: true }).click();
+        const releasePractice = hold('/api/sessions/controlled-session/phases/frontend/practice');
         await page.getByRole('button', { name: 'Practice', exact: true }).click();
+        await expect(page.locator('#processing-label')).toHaveText('Preparing practice questions…');
+        releasePractice();
         await page.getByLabel('Your answer 1').fill('The browser is not trusted.');
         const before = calls.length;
         await page.getByRole('button', { name: 'Show model answer' }).first().click();
@@ -78,7 +125,13 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
         await page.getByRole('button', { name: 'Ask Goldie', exact: true }).click();
         await expect(page.getByText('Listening to your question…', { exact: true })).toBeVisible();
         await page.waitForFunction(() => globalThis.demoTestRecordedBytes > 0);
+        const releaseAnswer = hold('/api/ask'); const releaseAnswerVoice = hold('/api/speech');
         await page.getByRole('button', { name: 'Send question', exact: true }).click();
+        await expect(page.locator('#processing-label')).toHaveText('Thinking through your question…');
+        releaseAnswer();
+        await expect(page.locator('#processing-label')).toHaveText('Preparing voice…');
+        releaseAnswerVoice();
+        await expect(page.locator('#processing-loader')).toBeHidden();
         await expect(page.getByText(/A malicious client can bypass/)).toBeVisible();
         await page.getByRole('button', { name: 'Resume lesson', exact: true }).click();
         await page.getByRole('button', { name: 'Mark read & finish', exact: true }).click();
@@ -120,8 +173,10 @@ const targetUrl = process.env.TARGET_URL || 'http://127.0.0.1:4317';
         await offline.getByRole('button', { name: 'Skip replay' }).click();
         await offline.getByRole('button', { name: 'Prepare lesson', exact: true }).click();
         await expect(offline.getByRole('alert')).toContainText('not connected');
+        await expect(offline.locator('#processing-loader')).toBeHidden();
+        await expect(offline.locator('#mentor-content')).toHaveAttribute('aria-busy', 'false');
         await offline.screenshot({ path: '/tmp/goldie-web-offline.png', fullPage: true });
         assert.deepEqual(errors, []);
-        console.log(`PASS: controlled replay/opt-in/lesson/practice/voice/resume/recap/reset, responsive widths and honest offline state. ${calls.length} controlled API requests; zero paid requests.`);
+        console.log(`PASS: controlled replay/opt-in/lesson/practice/voice/resume/recap/reset, stage-aware loader, responsive widths, reduced motion and honest offline state. ${calls.length} controlled API requests; zero paid requests.`);
     } finally { await browser.close(); }
 })();

@@ -19,10 +19,18 @@ const paths = {
 };
 export const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${paths[name] ?? paths.spark}</svg>`;
 const button = (label, action, kind = 'primary', disabled = false) => `<button class="${kind}-button" data-action="${action}"${disabled ? ' disabled' : ''}>${e(label)}</button>`;
+export function processingLabel(stage) {
+    return ({ offer: 'Preparing your lesson…', starting: 'Getting Goldie ready…', teaching: 'Preparing this explanation…',
+        voice: 'Preparing voice…', playback: 'Starting audio…', microphone: 'Waiting for microphone permission…',
+        recording: 'Preparing your recording…', transcription: 'Transcribing your question…', thinking: 'Thinking through your question…',
+        'practice-cache': 'Loading saved practice…', practice: 'Preparing practice questions…', recap: 'Preparing your recap…',
+        saving: 'Saving your progress…', restoring: 'Restoring your lesson…', pausing: 'Pausing the lesson…', resuming: 'Resuming the lesson…'
+    })[stage] ?? 'Getting Goldie ready…';
+}
 
 export function nextStep(state, ready, running = false) {
     const action = (name, message) => ({ target: `[data-action="${name}"]`, message });
-    if (state.busy) { return { target: null, message: 'Wait for Goldie. No need to click again.' }; }
+    if (state.busy) { return { target: null, message: 'Goldie is preparing. You can keep browsing the code.' }; }
     if (running) { return { target: null, message: 'Watch the sample build. A lesson comes next.' }; }
     if (state.error && state.retryable) { return action('retry', 'Click Retry when you’re ready, or keep browsing.'); }
     switch (state.view) {
@@ -79,7 +87,7 @@ export function mentorView(state, ready, phase, details = false) {
             body = `<span class="section-label">A moment to understand</span><h2>There’s a lesson in this build.</h2><p>Let’s connect the code to the ideas behind it.</p><ul class="topic-list">${(state.offer.previewTopics ?? []).map(topic => `<li>${e(topic)}</li>`).join('')}</ul><div class="action-row">${button('Explain this build', 'accept', 'primary', busy)}${button('Not now', 'decline', 'text', busy)}</div><p class="quiet-note">Audio starts only after you choose Explain.</p>`; break;
         case 'lesson':
             body = `<span class="section-label">Phase ${Math.max(0, state.session.phases.findIndex(p => p.id === phase?.id)) + 1} of ${state.session.phases.length}</span><h2>${e(phase?.title ?? 'Lesson complete')}</h2><p class="objective">${e(phase?.objective)}</p>
-              ${state.explanation ? `<div class="explanation${details ? ' expanded' : ''}"><p>${e(state.explanation)}</p></div>${button(details ? 'Hide full explanation' : 'Read full explanation', 'details', 'text')}` : '<p>Load the explanation when you’re ready.</p>'}
+              ${state.explanation ? `<div class="explanation${details ? ' expanded' : ''}"><p>${e(state.explanation)}</p></div>${button(details ? 'Hide full explanation' : 'Read full explanation', 'details', 'text')}` : `<p>${busy ? 'Your explanation will appear here.' : 'Load the explanation when you’re ready.'}</p>`}
               <div class="lesson-actions">${button(phase?.id === state.session.phases.at(-1)?.id ? 'Mark read & finish' : 'Mark read & continue', 'covered', 'secondary', busy)}${button('I already know this', 'familiar', 'text', busy)}</div>${button('End session', 'end', 'text', busy)}`; break;
         case 'gate': {
             const topic = state.session.phases.find(p => p.id === state.gatePhaseId);
@@ -89,10 +97,8 @@ export function mentorView(state, ready, phase, details = false) {
             body = `<span class="section-label">Practice, not a test</span><h2>Think it through.</h2><p>Write your reasoning, then compare with the model answer. Your answers stay in this tab.</p>${practiceCard(state, state.batches[state.practicePhaseId])}${button('Continue lesson', 'continue', 'primary', busy)}`; break;
         case 'question':
             body = `<span class="section-label">A little deeper</span><h2>${state.answer ? 'Here’s the idea.' : 'What’s on your mind?'}</h2>
-              ${state.recording === 'permission' ? '<p>Waiting for microphone permission…</p>' : ''}
               ${state.recording === 'recording' ? '<p class="recording-label"><span></span>Listening to your question…</p><p>Click Send when you’re done. Maximum 30 seconds.</p>' : ''}
               ${state.recording === 'ready' ? '<p>Recording stopped. Send your question, or cancel to discard it.</p>' : ''}
-              ${state.recording === 'processing' ? '<p>Transcribing locally, then asking Goldie…</p>' : ''}
               ${state.question ? `<blockquote>${e(state.question)}</blockquote>` : ''}${state.answer ? `<div class="answer-text">${e(state.answer)}</div>` : ''}
               <div class="action-row">${['recording', 'ready'].includes(state.recording) ? button('Send question', 'send', 'primary', busy) : ''}${state.answer || state.recording === 'idle' ? button('Resume lesson', 'resume', 'primary', busy) : ''}${!state.answer ? button('Cancel', 'cancel', 'text') : ''}</div>`; break;
         case 'recap':
@@ -104,5 +110,5 @@ export function mentorView(state, ready, phase, details = false) {
         default:
             body = `<span class="section-label">Your opt-in engineering mentor</span><h2>${ready ? 'Understand what you just built.' : 'Build it.\nUnderstand it.'}</h2><p>${ready ? 'Follow the request from form to API to database. Learn the why, not just the code.' : 'As the code comes together, Goldie helps the ideas come together too.'}</p>${ready ? `<div class="action-row">${button('Prepare lesson', 'prepare', 'primary', busy)}</div>` : '<p class="quiet-note">Run the sample prompt to begin.</p>'}<p class="quiet-note">${state.view === 'declined' ? 'No problem. Your code stays right here.' : 'No surprise audio. No interruptions.'}</p>`;
     }
-    return `${error}${busy ? '<div class="working" role="status"><span></span>Goldie is working…</div>' : ''}${body}`;
+    return `${error}${body}`;
 }

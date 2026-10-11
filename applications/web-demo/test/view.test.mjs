@@ -1,6 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mentorView, highlight, nextStep } from '../src/view.js';
+import { mentorView, highlight, nextStep, processingLabel } from '../src/view.js';
+
+test('processing copy describes real stages without invented completion or timing', () => {
+    assert.equal(processingLabel('offer'), 'Preparing your lesson…');
+    assert.equal(processingLabel('teaching'), 'Preparing this explanation…');
+    assert.equal(processingLabel('voice'), 'Preparing voice…');
+    assert.equal(processingLabel('thinking'), 'Thinking through your question…');
+    assert.equal(processingLabel('playback'), 'Starting audio…');
+    assert.equal(processingLabel('unknown'), 'Getting Goldie ready…');
+    assert.doesNotMatch(processingLabel('voice'), /%|seconds|ready to talk/i);
+});
+test('panel content does not duplicate the loader or tell users to load during processing', () => {
+    const state = { view: 'lesson', busy: true, session: { phases: [{ id: 'p1' }] } };
+    const html = mentorView(state, true, { id: 'p1', title: 'Boundary' });
+    assert.doesNotMatch(html, /Goldie is working|Load the explanation when/);
+    assert.match(html, /Your explanation will appear here/);
+});
 
 test('source tokens never become executable HTML', () => {
     const html = highlight('<img src=x onerror="alert(1)">');

@@ -39,6 +39,74 @@ function setup(count = 3) {
     return { controller: new DemoController(api, media), api, media, calls, session };
 }
 async function start(f) { await f.controller.prepare(); await f.controller.accept(); }
+const settle = () => new Promise(resolve => setImmediate(resolve));
+function deferRequest(f, target) {
+    const original = f.api.request; let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    f.api.request = async (path, body) => { if (path === target) { await pending; } return original(path, body); };
+    return release;
+}
+
+test('processing follows actual offer, explanation and voice work and clears only when playback is ready', async () => {
+    const f = setup(); const stages = [];
+    f.controller.subscribe(state => { if (state.busy) { stages.push(state.processing); } });
+    const release = deferRequest(f, '/api/speech');
+    let playbackReady;
+    f.media.play = () => new Promise(resolve => { playbackReady = () => { f.media.playing = true; resolve(); }; });
+    const pending = start(f); await settle();
+    assert.equal(f.controller.state.processing, 'voice'); assert.equal(f.controller.state.busy, true);
+    assert.ok(stages.includes('offer')); assert.ok(stages.includes('teaching'));
+    release(); await settle();
+    assert.equal(f.controller.state.processing, 'playback'); assert.equal(f.controller.state.busy, true);
+    playbackReady(); await pending;
+    assert.equal(f.controller.state.processing, null); assert.equal(f.controller.state.busy, false);
+    assert.equal(f.controller.state.playing, true);
+});
+test('question processing distinguishes recording, transcription, thinking and answer voice', async () => {
+    const f = setup(); await start(f); await f.controller.questionStart();
+    const stages = []; f.controller.subscribe(state => { if (state.busy) { stages.push(state.processing); } });
+    const release = deferRequest(f, '/api/ask');
+    const pending = f.controller.questionSend(); await settle();
+    assert.equal(f.controller.state.processing, 'thinking'); assert.equal(f.controller.state.busy, true);
+    assert.ok(stages.includes('recording')); assert.ok(stages.includes('transcription'));
+    release(); await pending;
+    assert.ok(stages.includes('voice')); assert.equal(f.controller.state.processing, null);
+});
+test('processing ends on a provider error and returns on explicit retry', async () => {
+    const f = setup(); const original = f.api.request; let fail = true;
+    f.api.request = (path, body) => path === '/api/offer' && fail
+        ? Promise.reject(Object.assign(new Error('Temporarily unavailable'), { retryable: true })) : original(path, body);
+    await f.controller.prepare();
+    assert.equal(f.controller.state.busy, false); assert.equal(f.controller.state.processing, null);
+    assert.match(f.controller.state.error, /Temporarily/);
+    fail = false; await f.controller.retry();
+    assert.equal(f.controller.state.view, 'offer'); assert.equal(f.controller.state.processing, null);
+});
+test('Cancel clears processing and a late canceled answer cannot clear a newer loader', async () => {
+    const f = setup(); await start(f); await f.controller.questionStart();
+    const releaseAnswer = deferRequest(f, '/api/ask');
+    const canceled = f.controller.questionSend(); await settle();
+    assert.equal(f.controller.state.processing, 'thinking');
+    f.controller.questionCancel(); assert.equal(f.controller.state.processing, null);
+    const releaseTeach = deferRequest(f, '/api/teach');
+    const next = f.controller.continuePhase(); await settle();
+    assert.equal(f.controller.state.processing, 'teaching');
+    releaseAnswer(); await canceled;
+    assert.equal(f.controller.state.processing, 'teaching'); assert.equal(f.controller.state.busy, true);
+    releaseTeach(); await next; assert.equal(f.controller.state.processing, null);
+});
+test('microphone permission and generated versus cached practice have honest processing stages', async () => {
+    const f = setup(); await start(f); let grant;
+    f.media.startRecording = () => new Promise(resolve => { grant = resolve; });
+    const pending = f.controller.questionStart(); await settle();
+    assert.equal(f.controller.state.processing, 'microphone');
+    grant(); await pending; assert.equal(f.controller.state.processing, null);
+    f.controller.questionCancel(); await f.controller.mark('phase_completed');
+    const stages = []; f.controller.subscribe(state => { if (state.busy) { stages.push(state.processing); } });
+    await f.controller.practice();
+    assert.ok(stages.includes('practice-cache')); assert.ok(stages.includes('practice'));
+    assert.equal(f.controller.state.processing, null);
+});
 
 test('construct/decline do not call providers or start audio', async () => {
     const f = setup(); assert.equal(f.calls.length, 0); f.controller.decline();

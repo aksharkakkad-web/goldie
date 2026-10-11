@@ -85,6 +85,11 @@ backend, not a cloud speech service.
 - A persistent Next step cue and purple button glow guide replay, acceptance,
   lessons, optional practice and final review. Waiting states do not urge another
   click; reduced-motion keeps a static highlight.
+- An in-panel Goldie logo and indeterminate purple bar replace the orb while
+  processing. Labels follow actual lesson, voice, transcription, answer and
+  practice work; audio startup stays pending until playback resolves. No invented
+  percentage, countdown or minimum wait. The editor remains usable, errors/Cancel
+  clear the loader, and reduced-motion leaves a static visible bar.
 - Backend offers, opt-in variable-phase lessons, pause/resume, skip, distinct
   self-reported familiarity, read completion and early end. Speech failure leaves
   text/coverage/exit usable.
@@ -105,8 +110,15 @@ not implemented. No user repo, secrets or unbounded source are uploaded.
 logic, doubling only browser/provider boundaries. **Browser QA** exercises the real
 UI in installed Chrome with controlled HTTP responses and a fake microphone device:
 opt-in, practice/reveal, recorded question, exact resume, recap/review/reset, three
-widths, keyboard/reduced motion and honest disconnected-service errors. This is
+widths, stage-aware processing labels, keyboard/reduced motion and honest
+disconnected-service errors. Deliberately held HTTP responses verify loading
+visibility without real provider calls or arbitrary delays. This is
 not proof of live Whisper/Gemini/ElevenLabs.
+
+The panel loader's logo/line composition is inspired by the supplied
+[MinimalPreloader reference](https://framer.com/m/MinimalPreloader-cc1jlH.js@90xfSUueigFLBdzFT7LN).
+It is implemented locally with CSS/DOM; no remote Framer code, dependency or
+page-asset percentage calculation is imported.
 
 **Actual Stage 3 HTTP integration** is checked separately against a built local
 backend's real Fastify routes, store and validation through the web proxy/controller.

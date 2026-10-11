@@ -4,7 +4,7 @@ import { HttpApi } from './api.js';
 import { DemoController } from './controller.js';
 import { BrowserMedia } from './media.js';
 import { mountOrb } from './orb.js';
-import { escapeHtml as e, icon, highlight, mentorView, nextStep } from './view.js';
+import { escapeHtml as e, icon, highlight, mentorView, nextStep, processingLabel } from './view.js';
 
 const $ = selector => document.querySelector(selector);
 const media = new BrowserMedia();
@@ -65,13 +65,17 @@ function renderMentor(state) {
     const selection = draft ? [focus.selectionStart, focus.selectionEnd] : null;
     const scroll = $('#mentor-content').scrollTop;
     $('#mentor').dataset.view = state.view;
+    $('.orb-stage').classList.toggle('processing', state.busy);
+    $('#processing-loader').hidden = !state.busy;
+    $('#processing-label').textContent = state.busy ? processingLabel(state.processing) : '';
+    $('#mentor-content').setAttribute('aria-busy', String(state.busy));
     $('#mentor-content').innerHTML = mentorView(state, ui.step === 4, controller.phase, ui.details);
     $('#mentor-content').scrollTop = scroll;
     if (draft) {
         const replacement = [...document.querySelectorAll('[data-draft]')].find(element => element.dataset.draft === draft);
         replacement?.focus({ preventScroll: true }); replacement?.setSelectionRange(...selection);
     }
-    $('#orb-status').textContent = state.busy ? 'Goldie is working…' : state.recording === 'recording' ? 'Listening' : state.playing ? 'Goldie is speaking' : state.view === 'recap' ? 'A little wiser. Back to building.' : 'Ready when you are';
+    $('#orb-status').textContent = state.busy ? '' : state.recording === 'recording' ? 'Listening' : state.playing ? 'Goldie is speaking' : state.view === 'recap' ? 'A little wiser. Back to building.' : 'Ready when you are';
     $('#phase-dots').innerHTML = state.session && ['lesson', 'question', 'gate', 'practice'].includes(state.view) ? state.session.phases.map(p => `<span class="phase-dot${p.id === controller.phase?.id ? ' active' : ''}${state.session.completedIds.includes(p.id) ? ' covered' : ''}" title="${e(p.title)}"></span>`).join('') : '';
     $('#knowledge-level').disabled = Boolean(controller.active || state.busy); $('#knowledge-level').value = controller.context.profile.level;
     $('#ask').disabled = state.busy || state.view !== 'lesson' || !state.explanation;
@@ -115,7 +119,7 @@ $('#mentor-content').addEventListener('input', event => { if (event.target.datas
 $('#replay-action').addEventListener('click', runReplay); $('#reset').addEventListener('click', () => void reset());
 $('#ask').addEventListener('click', () => void controller.questionStart());
 $('#play').addEventListener('click', () => {
-    if (controller.state.view === 'question') { void controller.run(async () => { if (media.playing) { media.pause(); } else { await media.play(); } }); }
+    if (controller.state.view === 'question') { void controller.run(async () => { if (media.playing) { media.pause(); } else { await controller.startPlayback(); } }); }
     else { void controller.playPause(); }
 });
 $('#skip').addEventListener('click', () => void controller.mark('skip'));

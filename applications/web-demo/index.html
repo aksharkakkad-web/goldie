@@ -51,7 +51,15 @@
         <p>The coding sequence is prepared. Teaching uses your connected Goldie backend. No microphone starts until you ask a question.</p>
       </div>
       <div id="next-step" class="next-step" role="status" aria-live="polite"><span>Next step</span><p id="next-step-text">Click Run sample prompt in the terminal to begin.</p></div>
-      <div class="orb-stage"><div class="orb-wrap"><canvas id="orb" aria-hidden="true"></canvas><div class="orb-fallback" aria-hidden="true"></div></div><p id="orb-status" class="orb-status" role="status" aria-live="polite">Ready when you are</p><div id="phase-dots" class="phase-dots"></div></div>
+      <div class="orb-stage">
+        <div id="processing-loader" class="processing-loader" hidden>
+          <img src="/assets/goldie.png" alt="" width="36" height="36">
+          <p id="processing-label" role="status" aria-live="polite" aria-atomic="true"></p>
+          <div class="processing-bar" aria-hidden="true"><span></span></div>
+        </div>
+        <div class="orb-wrap"><canvas id="orb" aria-hidden="true"></canvas><div class="orb-fallback" aria-hidden="true"></div></div>
+        <p id="orb-status" class="orb-status" role="status" aria-live="polite">Ready when you are</p><div id="phase-dots" class="phase-dots"></div>
+      </div>
       <div id="mentor-content" class="mentor-content" tabindex="-1"></div>
       <div class="player-controls" aria-label="Goldie audio controls">
         <button id="ask" class="round-control" aria-label="Ask Goldie" title="Ask Goldie" disabled></button>
