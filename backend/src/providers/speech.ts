@@ -39,7 +39,10 @@ async function isQuotaError(response: Response): Promise<boolean> {
         }
         const parsed = z.object({ detail: z.object({ status: z.string() }) }).safeParse(JSON.parse(Buffer.concat(chunks).toString('utf8')));
         return parsed.success && parsed.data.detail.status === 'quota_exceeded';
-    } catch { return false; }
+    } catch (error) {
+        if (error instanceof SyntaxError) { return false; }
+        throw error;
+    }
 }
 
 export async function synthesizeSpeech(text: string, options: SpeechOptions): Promise<Buffer> {

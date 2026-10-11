@@ -108,6 +108,14 @@ describe('ElevenLabs speech adapter', () => {
             expect(Date.now() - started).to.be.lessThan(1000);
         });
     });
+    it('keeps the synthesis deadline when an error response body stalls during quota classification', async () => {
+        await provider((_request, response) => {
+            response.writeHead(401, { 'content-type': 'application/json' }); response.write('{');
+        }, async baseUrl => {
+            const error = await failure(synthesizeSpeech('Approved text', { ...options, baseUrl, timeoutMs: 30 }));
+            expect(error).to.have.property('code', 'SPEECH_TIMEOUT');
+        });
+    });
 
     it('rejects oversized, empty and non-audio provider responses', async () => {
         for (const sample of ['oversized', 'empty', 'json', 'invalid']) {

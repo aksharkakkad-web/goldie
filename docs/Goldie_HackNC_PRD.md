@@ -20,7 +20,7 @@
 ## 2. Product rules — locked decisions
 
 1. **Opt-in, never surprise audio.** Goldie may offer a non-blocking “Explain what you're building?” popup, but starts no lesson or microphone capture until the developer accepts.
-2. **Proactive only after acceptance.** Within an active session, it chooses worthwhile concepts and advances through phases automatically unless the user pauses, skips or asks a question.
+2. **Proactive only after acceptance.** Within an active session, it chooses worthwhile concepts. Stage 3 offers **Practice / Continue** after a covered phase rather than immediately playing the next clip. Skip and self-reported familiarity bypass practice; questions pause the lesson and require explicit Resume.
 3. **Phases are dynamic.** A lesson has 0 to N coherent learning objectives, based on engineering scope and the user's baseline knowledge. There is no fixed 3- or 5-phase maximum. For the hackathon, generate the roadmap at the start and the detailed explanation one phase at a time to control latency and cost.
 4. **Hybrid sequencing.** For a large PRD/app build, begin with a system-level foundation, then follow relevant implementation milestones. For smaller tasks, prioritize the specific implementation and its underlying engineering principle. For cosmetic tasks, normally offer nothing.
 5. **HANDOFF.md is primary context.** The Codex-authored, cumulative `.goldie/HANDOFF.md` contains current architecture, all relevant prompts, plan, dependencies, decisions, progress and changes. It is updated at meaningful milestones rather than every file edit.
