@@ -57,6 +57,7 @@ export class GoldieLessonController {
     private retryWork?: Work;
     private endedDuringWork?: { generation: number; phaseId: string };
     private readonly unsubscribeAudio: () => void;
+    private readonly quietLevelRef = { current: 0 };
 
     constructor(private readonly service: GoldieService, private readonly audio: GoldieAudioAdapter = new GoldieAudioPlayer(),
         private readonly storage: Storage | undefined = browserStorage()) {
@@ -103,6 +104,7 @@ export class GoldieLessonController {
     }
 
     get state(): GoldieLessonState { return this.current; }
+    get audioLevelRef(): { current: number } { return this.audio.audioLevelRef ?? this.quietLevelRef; }
     get canChangeContext(): boolean {
         return !this.disposed && !this.current.busy && !this.pendingAction && !this.pendingClosure && !this.recoveryError
             && (!this.reference || this.current.view === 'recap') && ['idle', 'recap'].includes(this.current.view);

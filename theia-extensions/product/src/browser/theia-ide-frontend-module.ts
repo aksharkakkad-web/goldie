@@ -8,6 +8,7 @@
  ********************************************************************************/
 
 import '../../src/browser/style/index.css';
+import { GoldieMidnightTheme } from './goldie-midnight-theme';
 
 import { AIRegistryConfiguration } from '@theia/ai-registry/lib/common/ai-registry-configuration';
 import { WidgetFactory, bindViewContribution, FrontendApplicationContribution } from '@theia/core/lib/browser';
@@ -29,6 +30,9 @@ import { TheiaIDEGettingStartedWidget } from './theia-ide-getting-started-widget
 
 export default new ContainerModule((bind, _unbind, isBound, rebind) => {
     applyBranding();
+
+    bind(GoldieMidnightTheme).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(GoldieMidnightTheme);
 
     bind(GoldieService).toDynamicValue(context =>
         ServiceConnectionProvider.createLocalProxy<GoldieService>(context.container, GOLDIE_SERVICE_PATH)

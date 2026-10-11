@@ -11,10 +11,12 @@ import * as React from '@theia/core/shared/react';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { codicon, Message } from '@theia/core/lib/browser/widgets';
+import { ApplicationShell } from '@theia/core/lib/browser/shell/application-shell';
 import { FileDialogService } from '@theia/filesystem/lib/browser/file-dialog/file-dialog-service';
 import type { KnowledgeLevel } from './goldie-context';
 import { GoldieService } from '../../common/goldie-service';
 import { GoldieLessonController, GoldieLessonState, GoldiePhaseStatus } from './goldie-lesson-controller';
+import { GradientOrb, GradientOrbLevelRef } from './gradient-orb';
 import '../../../src/browser/goldie/goldie-lesson.css';
 
 type ConnectionState = 'Connecting' | 'Connected' | 'Unavailable';
@@ -26,6 +28,7 @@ export class GoldieWidget extends ReactWidget {
     static readonly ID = 'goldie:panel';
     @inject(GoldieService) protected readonly service: GoldieService;
     @inject(GOLDIE_HANDOFF_DIALOG) protected readonly fileDialogService: FileDialogService;
+    @inject(ApplicationShell) protected readonly shell: ApplicationShell;
     protected connectionState: ConnectionState = 'Connecting';
     protected connectionDetail = '';
     protected requestRevision = 0;
@@ -38,6 +41,7 @@ export class GoldieWidget extends ReactWidget {
     protected selectedLevel: KnowledgeLevel = 'beginner';
     protected loadingHandoff = false;
     protected contextError: string | undefined;
+    protected detailsOpen = false;
 
     @postConstruct()
     protected init(): void {
@@ -452,24 +456,136 @@ export class GoldieWidget extends ReactWidget {
         }
     }
 
+    protected get orbLevelRef(): GradientOrbLevelRef | undefined {
+        const controller = this.lessonController as (GoldieLessonController & { readonly audioLevelRef?: GradientOrbLevelRef }) | undefined;
+        return controller?.audioLevelRef;
+    }
+
+    protected async handlePrimaryControl(): Promise<void> {
+        const { view, context, busy } = this.lessonState;
+        if (busy) { return; }
+        if (view === 'offer') { await this.lessonController.acceptOffer(); return; }
+        if (view === 'lesson' || view === 'question') { await this.lessonController.playPause(); return; }
+        if (view === 'recap') { this.detailsOpen = true; this.update(); return; }
+        if (!context) { this.detailsOpen = true; this.update(); return; }
+        await this.lessonController.checkOffer();
+    }
+
+    protected async handleSkipControl(): Promise<void> {
+        const { view, busy } = this.lessonState;
+        if (busy) { return; }
+        if (view === 'lesson') {
+            await this.lessonController.skipPhase();
+        } else if (view === 'question') {
+            await this.lessonController.resumeLesson();
+        } else if (view === 'offer') {
+            this.lessonController.declineOffer();
+        }
+    }
+
+    protected openTypedQuestion(): void {
+        if (this.lessonState.view !== 'lesson') { return; }
+        this.detailsOpen = true;
+        this.openQuestionComposer();
+    }
+
+    protected async closeGoldie(): Promise<void> {
+        this.close();
+        await this.shell.collapsePanel('right');
+    }
+
+    protected primaryControlLabel(): string {
+        const { view, audioState, context, busy } = this.lessonState;
+        if (busy) { return this.busyMessage(); }
+        if (view === 'offer') { return 'Start lesson'; }
+        if (view === 'lesson' || view === 'question') { return audioState === 'playing' ? 'Pause audio' : 'Play audio'; }
+        if (view === 'recap') { return 'Open session details'; }
+        return context ? 'Prepare a lesson' : 'Set up Goldie';
+    }
+
+    protected renderOrbError(): React.ReactNode {
+        const { error, retryable, busy } = this.lessonState;
+        const connectionError = this.connectionState === 'Unavailable';
+        if (!error && !this.contextError && !connectionError) { return undefined; }
+        return <div className='goldie-orb-error' role='alert'>
+            <span className={codicon('warning')} aria-hidden='true' />
+            <span>Goldie couldn't continue.</span>
+            {(connectionError || retryable) && <button disabled={busy || this.connectionState === 'Connecting'} onClick={() => {
+                if (connectionError) { this.checkConnection(); } else { this.lessonController.retry(); }
+            }}>Retry</button>}
+            <button aria-label='Open error details' title='Open error details' onClick={() => { this.detailsOpen = true; this.update(); }}>
+                <span className={codicon('chevron-right')} aria-hidden='true' />
+            </button>
+        </div>;
+    }
+
+    protected renderSessionMarkers(): React.ReactNode {
+        const { session, phaseIndex, view } = this.lessonState;
+        if (!session || (view !== 'lesson' && view !== 'question')) { return undefined; }
+        return <div className='goldie-orb-markers' aria-label={`Phase ${phaseIndex + 1} of ${session.phases.length}`}>
+            {session.phases.map((phase, index) => <span key={phase.id} className={index === phaseIndex ? 'active' : index < phaseIndex ? 'complete' : ''} />)}
+        </div>;
+    }
+
     protected formatTime(seconds: number): string {
         return `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
     }
 
     protected render(): React.ReactNode {
-        const { busy } = this.lessonState;
-        return <section className='goldie-panel' aria-label='Goldie learning panel' aria-busy={busy || this.loadingHandoff}>
+        const { busy, view, audioState } = this.lessonState;
+        const playing = audioState === 'playing';
+        const canSkip = !busy && (view === 'lesson' || view === 'question' || view === 'offer');
+        const canAsk = !busy && view === 'lesson';
+        const reducedMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+        return <section className='goldie-panel goldie-orb-shell' aria-label='Goldie learning panel' aria-busy={busy || this.loadingHandoff}>
             <header className='goldie-panel-header'>
-                <span className='goldie-mark' aria-hidden='true'>g</span><strong>Goldie</strong>
-                <button className='goldie-close' aria-label='Close Goldie panel' title='Close Goldie panel' onClick={() => this.close()}>×</button>
+                <span className='goldie-orb-mini' aria-hidden='true' /><strong>Goldie</strong>
+                <button className={`goldie-header-action${this.detailsOpen ? ' active' : ''}`}
+                    aria-label={this.detailsOpen ? 'Close Goldie details' : 'Open Goldie setup and details'}
+                    title={this.detailsOpen ? 'Close details' : 'Setup and details'} onClick={() => {
+                        this.detailsOpen = !this.detailsOpen; this.update();
+                    }}>
+                    <span className={codicon(this.detailsOpen ? 'close' : 'settings-gear')} aria-hidden='true' />
+                </button>
+                <button className='goldie-close' aria-label='Close Goldie panel' title='Close Goldie panel' onClick={() => this.closeGoldie()}>×</button>
             </header>
-            <div className='goldie-panel-body'>
-                {this.renderStatus()}
-                <div className='goldie-live-status' role='status' aria-live='polite' aria-atomic='true'>{busy || this.loadingHandoff ? this.busyMessage() : ''}</div>
-                {this.renderError()}
-                {this.renderLessonView()}
+            <div className='goldie-orb-stage'>
+                <div className='goldie-live-status' role='status' aria-live='polite' aria-atomic='true'>
+                    {busy || this.loadingHandoff ? this.busyMessage() : playing ? 'Goldie is speaking' : 'Goldie is ready'}
+                </div>
+                <div className={`goldie-orb-visual${playing ? ' speaking' : ''}`}>
+                    <span className='goldie-orb-halo' aria-hidden='true' />
+                    <GradientOrb levelRef={this.orbLevelRef} reducedMotion={reducedMotion} />
+                </div>
+                {this.renderSessionMarkers()}
+                {this.renderOrbError()}
+                <div className='goldie-orb-controls' role='group' aria-label='Goldie controls'>
+                    <button className='goldie-orb-control' disabled={!canAsk} aria-label={canAsk ? 'Ask a typed question' : 'Questions are available during a lesson'}
+                        title={canAsk ? 'Ask a question' : 'Questions are available during a lesson'} onClick={() => this.openTypedQuestion()}>
+                        <svg viewBox='0 0 24 24' aria-hidden='true'><path d='M5 5.5h14v10H9l-4 3v-13Z'/><path d='M9 9.5h6M9 12.5h4'/></svg>
+                    </button>
+                    <button className={`goldie-orb-control goldie-orb-primary${playing ? ' playing' : ''}`} disabled={busy || this.loadingHandoff}
+                        aria-label={this.primaryControlLabel()} title={this.primaryControlLabel()} onClick={() => this.handlePrimaryControl()}>
+                        {busy || this.loadingHandoff
+                            ? <span className={codicon('loading', true)} aria-hidden='true' />
+                            : <svg viewBox='0 0 24 24' aria-hidden='true'>{playing
+                                ? <path d='M8 6.5v11M16 6.5v11' />
+                                : <path d='m9 6 8 6-8 6V6Z' />}</svg>}
+                    </button>
+                    <button className='goldie-orb-control' disabled={!canSkip}
+                        aria-label={view === 'question' ? 'Return to lesson' : view === 'offer' ? 'Not now' : 'Skip this explanation'}
+                        title={view === 'question' ? 'Return to lesson' : view === 'offer' ? 'Not now' : 'Skip'} onClick={() => this.handleSkipControl()}>
+                        <svg viewBox='0 0 24 24' aria-hidden='true'><path d='m7 7 7 5-7 5V7ZM17 7v10' /></svg>
+                    </button>
+                </div>
             </div>
-            <footer className='goldie-panel-footer'>Project learning · based on supplied context</footer>
+            {this.detailsOpen && <aside className='goldie-details-drawer' aria-label='Goldie setup and details'>
+                <div className='goldie-panel-body'>
+                    {this.renderStatus()}
+                    {this.renderError()}
+                    {this.renderLessonView()}
+                </div>
+            </aside>}
         </section>;
     }
 }

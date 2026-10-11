@@ -205,17 +205,24 @@ test('real player publishes current clip timing and ignores released clip update
 test('real widget presents architecture estimate, conceptual scope, explicit text completion and supported questions', async () => {
     const { renderWidget } = require('./goldie-widget-test-utils.cjs');
     const { controller } = setup(); await controller.checkOffer();
-    const offer = renderWidget(controller.state); assert.match(offer, /handoff and knowledge level/i); assert.match(offer, /3 min/);
+    const clean = renderWidget(controller.state); assert.doesNotMatch(clean, /handoff and knowledge level/i);
+    const offer = renderWidget(controller.state, { detailsOpen: true });
+    assert.match(offer, /handoff and knowledge level/i); assert.match(offer, /3 min/);
     await controller.acceptOffer(); const lesson = renderWidget(controller.state);
-    assert.match(lesson, /Explain more/); assert.match(lesson, /Mark read/); assert.match(lesson, /Conceptual/); assert.doesNotMatch(lesson, /mastered/i);
+    assert.doesNotMatch(lesson, /Explain more/);
+    const lessonDetails = renderWidget(controller.state, { detailsOpen: true });
+    assert.match(lessonDetails, /Explain more/); assert.match(lessonDetails, /Mark read/);
+    assert.match(lessonDetails, /Conceptual/); assert.doesNotMatch(lessonDetails, /mastered/i);
     await controller.askQuestion('What is an API?'); const answer = renderWidget(controller.state);
-    assert.match(answer, /Supported questions/); assert.match(answer, /What is an API/); controller.dispose();
+    assert.doesNotMatch(answer, /Supported questions/);
+    const answerDetails = renderWidget(controller.state, { detailsOpen: true });
+    assert.match(answerDetails, /Supported questions/); assert.match(answerDetails, /What is an API/); controller.dispose();
 });
 
 test('new narrow dock gets readable width while restored user width is respected', async () => {
     const { viewContribution } = require('./goldie-widget-test-utils.cjs');
     const fresh = viewContribution({ restored: false, width: 144 }); await fresh.onDidInitializeLayout();
-    assert.deepEqual(fresh.resizes, [[340, 'right']]);
+    assert.deepEqual(fresh.resizes, [[304, 'right']]);
     const saved = viewContribution({ restored: true, width: 240 }); await saved.onDidInitializeLayout(); assert.deepEqual(saved.resizes, []);
     const wide = viewContribution({ restored: false, width: 500 }); await wide.onDidInitializeLayout(); assert.deepEqual(wide.resizes, []);
 });
@@ -307,8 +314,9 @@ test('safe nonretryable RPC failures display their message without retry control
     let attempts = 0;
     service.speech = async () => { attempts++; throw Object.assign(new Error('Speech is not configured.'), { code: -32001, data: { apiCode: 'SPEECH_UNAVAILABLE' } }); };
     await controller.askQuestion('What is an API?'); assert.equal(controller.state.retryable, false);
-    assert.equal(controller.state.error, 'Speech is not configured.'); assert.doesNotMatch(renderWidget(controller.state), /Retry last request/);
-    assert.match(renderWidget(controller.state), /Play answer audio/); assert.doesNotMatch(renderWidget(controller.state), /Retry answer audio/);
+    const failureDetails = renderWidget(controller.state, { detailsOpen: true });
+    assert.equal(controller.state.error, 'Speech is not configured.'); assert.doesNotMatch(failureDetails, /Retry last request/);
+    assert.match(failureDetails, /Play answer audio/); assert.doesNotMatch(failureDetails, /Retry answer audio/);
     await controller.retry(); assert.equal(attempts, 1); assert.equal(calls.ask.length, 1); controller.dispose();
 });
 
@@ -316,7 +324,7 @@ test('nonretryable lesson speech offers explicit Play after correction without a
     const { renderWidget } = require('./goldie-widget-test-utils.cjs'); const { controller, service } = setup();
     const speak = service.speech; let attempts = 0;
     service.speech = async () => { attempts++; throw Object.assign(new Error('Speech is not configured.'), { code: -32001 }); };
-    await start(controller); const markup = renderWidget(controller.state);
+    await start(controller); const markup = renderWidget(controller.state, { detailsOpen: true });
     assert.match(markup, /Play lesson audio/); assert.doesNotMatch(markup, /Retry lesson audio/); assert.doesNotMatch(markup, /Retry last request/);
     await controller.retry(); assert.equal(attempts, 1); service.speech = speak; await controller.playPause();
     assert.equal(controller.state.audioState, 'playing'); controller.dispose();
